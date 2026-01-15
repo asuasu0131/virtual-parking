@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（ズーム修正版）</title>
+<title>駐車場 空き状況ナビ（完全版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -11,27 +11,39 @@ h1 { font-size:clamp(18px,4vw,26px); margin:6px 0; }
 button { padding:6px 10px; font-size:14px; margin:2px; }
 #controller { margin-bottom:8px; }
 
+#zoom-slider-container {
+  margin: 8px auto;
+  width: 90%;
+}
+#zoom-slider { width: 100%; }
+
 #parking-lot-container {
-  position:relative; width:100%; height:80vh; margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
+  position:relative;
+  width:100%; max-width:900px; aspect-ratio:9/6.5;
+  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
 }
 
 #parking-lot {
-  position:absolute; width:100%; height:100%; top:0; left:0;
+  position:absolute; width:100%; height:100%;
+  top:0; left:0;
+  transform-origin:50% 50%;
 }
 
-.rod { position:absolute; width:33.33%; height:22%;
+.rod {
+  position:absolute;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px);
+  color:white; font-weight:bold; font-size:14px; /* 文字は固定 */
   border-top:3px solid white; border-bottom:3px solid white;
+  box-sizing:border-box;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
-#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001;}
+#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 
 /* 自分の向き矢印 */
 #heading-arrow {
   position:absolute; width:2px; height:14px; background:red; z-index:1002;
-  transform-origin:bottom center;
+  top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
 }
 #heading-arrow::after {
   content:""; position:absolute; bottom:100%; left:-4px;
@@ -40,10 +52,14 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（ズーム修正版）</h1>
+<h1>駐車場 空き状況ナビ（完全版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
+
+<div id="zoom-slider-container">
+  <input type="range" id="zoom-slider" min="0.5" max="2.0" value="1" step="0.01">
+</div>
 
 <div id="controller">
   <button id="up">↑</button><br>
@@ -60,9 +76,11 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <script>
+/* ==== 駐車場範囲 ==== */
 const MIN_LAT=38.16742, MAX_LAT=38.16752;
 const MIN_LNG=140.86561, MAX_LNG=140.86591;
 
+/* ==== ロッド ==== */
 const rods=[
  {id:"A1",lat:38.16748,lng:140.86561,status:0,row:1,col:1},
  {id:"A2",lat:38.16746,lng:140.86561,status:1,row:2,col:1},
@@ -72,25 +90,30 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
+/* ==== 初期位置（開発モード）==== */
 let userLat = (MIN_LAT+MAX_LAT)/2;
 let userLng = (MIN_LNG+MAX_LNG)/2;
 let deviceHeading=null;
-let scale = 1;
+let zoomScale = 1;
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 
+/* ==== Socket.IO接続 ==== */
 const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 
+/* ==== 他人の位置 ==== */
 const others = {}; 
 
+/* ==== GPS→UI相対座標 ==== */
 function gpsToRelative(lat,lng){
-  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
-  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
+  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * 100;
+  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * 100;
   return {x: dx, y: dy};
 }
 
+/* ==== ロッド描画 ==== */
 function renderRods(){
   document.querySelectorAll(".rod").forEach(e=>e.remove());
   rods.forEach(r=>{
@@ -102,6 +125,7 @@ function renderRods(){
 }
 renderRods();
 
+/* ==== 開発モード：クリック・コントローラー ==== */
 container.addEventListener("click", e=>{
  const rect=container.getBoundingClientRect();
  const x=e.clientX-rect.left, y=e.clientY-rect.top;
@@ -120,6 +144,7 @@ document.getElementById("up").onclick=moveUp;
 document.getElementById("down").onclick=moveDown;
 document.getElementById("left").onclick=moveLeft;
 document.getElementById("right").onclick=moveRight;
+
 window.addEventListener("keydown", e=>{
  switch(e.key){
   case "ArrowUp": moveUp(); break;
@@ -129,6 +154,7 @@ window.addEventListener("keydown", e=>{
  }
 });
 
+/* ==== 方位センサ ==== */
 document.getElementById("enable-orientation").onclick=async()=>{
  if(typeof DeviceOrientationEvent?.requestPermission==="function"){
   const res=await DeviceOrientationEvent.requestPermission();
@@ -141,6 +167,12 @@ document.getElementById("enable-orientation").onclick=async()=>{
  });
 };
 
+/* ==== Zoomスライダー ==== */
+document.getElementById("zoom-slider").addEventListener("input", e=>{
+  zoomScale = parseFloat(e.target.value);
+});
+
+/* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
     if(id === socket.id) continue; 
@@ -162,63 +194,48 @@ socket.on("positions", data=>{
   }
 });
 
+/* ==== 自分の位置送信 ==== */
 function sendMyPosition(){
  if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng});
 }
 
+/* ==== メインループ ==== */
 (function loop(){
  if(userLat!==null && userLng!==null){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-  // ロッド配置（位置だけスケーリング）
+  // ロッドを自分基準で相対配置＋ズーム
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
     const rel = gpsToRelative(r.lat,r.lng);
-    const offsetX = d.offsetWidth/2;
-    const offsetY = d.offsetHeight/2;
-    d.style.left = (lot.clientWidth/2 + rel.x*scale - offsetX) + "px";
-    d.style.top  = (lot.clientHeight/2 + rel.y*scale - offsetY) + "px";
+    const baseWidth = 33; // 基準幅(px)
+    const baseHeight = 22; // 基準高さ(px)
+    d.style.width = `${baseWidth*zoomScale}px`;
+    d.style.height = `${baseHeight*zoomScale}px`;
+    d.style.left = (lot.clientWidth/2 + rel.x*zoomScale - (baseWidth*zoomScale)/2) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y*zoomScale - (baseHeight*zoomScale)/2) + "px";
   });
 
   // 他人マーカー
   for(const id in others){
     const o = others[id];
     const rel = gpsToRelative(o.lat,o.lng);
-    o.marker.style.left = (lot.clientWidth/2 + rel.x*scale -6) + "px";
-    o.marker.style.top  = (lot.clientHeight/2 + rel.y*scale -6) + "px";
+    o.marker.style.left = (lot.clientWidth/2 + rel.x*zoomScale -6) + "px";
+    o.marker.style.top  = (lot.clientHeight/2 + rel.y*zoomScale -6) + "px";
   }
 
-  // 自分マーカー
-  document.getElementById("user-marker").style.left = lot.clientWidth/2 + "px";
-  document.getElementById("user-marker").style.top  = lot.clientHeight/2 + "px";
-
-  // 自分向き矢印
-  const arrow = document.getElementById("heading-arrow");
-  arrow.style.left = lot.clientWidth/2 + "px";
-  arrow.style.top  = lot.clientHeight/2 + "px";
-  arrow.style.transform = `translate(-50%,-100%) rotate(${deviceHeading||0}deg)`;
-
-  // lotは回転のみ
+  // UI回転
   if(deviceHeading!=null){
-    lot.style.transform = `rotate(${-deviceHeading}deg)`;
+    lot.style.transform = `rotate(${-deviceHeading}deg) scale(${zoomScale})`;
   } else {
-    lot.style.transform = `rotate(0deg)`;
+    lot.style.transform = `scale(${zoomScale})`;
   }
 
   sendMyPosition();
  }
  requestAnimationFrame(loop);
 })();
-
-// ズームスライダー
-const slider = document.createElement("input");
-slider.type="range";
-slider.min="0.5"; slider.max="2"; slider.step="0.01"; slider.value="1";
-slider.style.width="90%";
-slider.style.margin="6px auto";
-slider.addEventListener("input", ()=>{ scale=parseFloat(slider.value); });
-container.parentNode.insertBefore(slider, container);
 </script>
 </body>
 </html>
