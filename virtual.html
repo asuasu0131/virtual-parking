@@ -104,13 +104,18 @@ function gpsToRelative(lat,lng){
 }
 
 function renderRods(){
-  document.querySelectorAll(".rod").forEach(e=>e.remove());
-  rods.forEach(r=>{
-    const d=document.createElement("div");
-    d.className="rod "+(r.status===0?"empty":"full");
-    d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
-    lot.appendChild(d);
-  });
+// ロッドを自分基準で相対配置
+document.querySelectorAll(".rod").forEach((d,i)=>{
+  const r = rods[i];
+  const rel = gpsToRelative(r.lat,r.lng);
+
+  // divの幅・高さの半分をオフセット
+  const offsetX = d.offsetWidth / 2;
+  const offsetY = d.offsetHeight / 2;
+
+  d.style.left = (lot.clientWidth/2 + rel.x - offsetX) + "px";
+  d.style.top  = (lot.clientHeight/2 + rel.y - offsetY) + "px";
+});
 }
 renderRods();
 
