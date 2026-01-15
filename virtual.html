@@ -2,47 +2,50 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（縮小版・開発モード有り）</title>
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>駐車場 空き状況ナビ（完全版）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-html, body { margin:0; padding:0; width:100vw; height:100vh; overflow:hidden; font-family:sans-serif; background:#cfcfcf; }
-h1 { position:absolute; top:5px; left:50%; transform:translateX(-50%); font-size:clamp(16px,4vw,28px); margin:0; color:#000; z-index:2000; }
-#location,#orientation {
-  position:absolute; left:10px; padding:6px 8px; background:#fff; border-radius:6px; font-size:13px; z-index:2000;
-}
-#location{top:40px;} #orientation{top:70px;}
-button { padding:6px 10px; font-size:14px; margin:2px; z-index:2000; position:absolute; background:#fff; border-radius:6px; }
-#enable-orientation{top:100px; left:10px;}
+body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
+h1 { font-size:clamp(18px,4vw,26px); margin:6px 0; }
+#location,#orientation { background:#fff; padding:6px 8px; margin-bottom:6px; border-radius:6px; font-size:13px; }
+button { padding:6px 10px; font-size:14px; margin:2px; }
+#controller { margin-bottom:8px; }
 
-#controller{bottom:10px; left:50%; transform:translateX(-50%); z-index:2000;}
-#controller button{ margin:2px; }
-
-/* 駐車場表示 */
 #parking-lot-container {
-  position:absolute;
-  top:50%; left:50%;
-  width:90vw; height:80vh;
-  transform:translate(-50%,-50%);
-  overflow:hidden;
-  border-radius:10px; background:#bfbfbf;
+  position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5;
+  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
 }
-#parking-lot { position:absolute; width:100%; height:100%; top:0; left:0; }
-.rod { position:absolute; width:33.33%; height:22%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:clamp(14px,3vw,24px); border-top:3px solid white; border-bottom:3px solid white; }
+
+#parking-lot {
+  position:absolute; width:100%; height:100%;
+  top:0; left:0;
+}
+
+.rod { position:absolute; width:33.33%; height:22%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px);
+  border-top:3px solid white; border-bottom:3px solid white;
+}
 .empty{background:#4caf50;} .full{background:#f44336;}
-#user-marker{position:absolute; width:16px; height:16px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
-.user-marker-other{position:absolute;width:14px;height:14px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
-#route-path{position:absolute; z-index:900; pointer-events:none; top:0; left:0; width:100%; height:100%;}
+#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
+.user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 
 /* 自分の向き矢印 */
-#heading-arrow { position:absolute; width:2px; height:16px; background:red; z-index:1002; top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg); }
-#heading-arrow::after { content:""; position:absolute; bottom:100%; left:-4px; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red; }
+#heading-arrow {
+  position:absolute; width:2px; height:14px; background:red; z-index:1002;
+  top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
+}
+#heading-arrow::after {
+  content:""; position:absolute; bottom:100%; left:-4px;
+  border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red;
+}
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（縮小・開発モード有り）</h1>
-<div id="location">現在地（開発）</div>
+<h1>駐車場 空き状況ナビ（完全版）</h1>
+<div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
-<button id="enable-orientation">方位センサ有効化</button>
+<button id="enable-orientation">方位センサを有効化</button>
 
 <div id="controller">
   <button id="up">↑</button><br>
@@ -53,7 +56,6 @@ button { padding:6px 10px; font-size:14px; margin:2px; z-index:2000; position:ab
 
 <div id="parking-lot-container">
   <div id="parking-lot"></div>
-  <canvas id="route-path"></canvas>
   <div id="user-marker"></div>
   <div id="heading-arrow"></div>
 </div>
@@ -74,28 +76,27 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
-/* ==== 初期位置 ==== */
-let userLat=(MIN_LAT+MAX_LAT)/2;
-let userLng=(MIN_LNG+MAX_LNG)/2;
+/* ==== 初期位置（開発モード）==== */
+let userLat = (MIN_LAT+MAX_LAT)/2;   // 駐車場中央付近
+let userLng = (MIN_LNG+MAX_LNG)/2;
+
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
-const canvas=document.getElementById("route-path");
-const ctx=canvas.getContext("2d");
 
 /* ==== Socket.IO接続 ==== */
-const SOCKET_URL="https://parking-monitor-fr8a.onrender.com";
-const socket=io(SOCKET_URL,{transports:["websocket","polling"]});
-const others={};
+const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
+const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 
-/* ==== GPS→相対座標 ==== */
+/* ==== 他人の位置 ==== */
+const others = {}; 
+
+/* ==== GPS→UI相対座標 ==== */
 function gpsToRelative(lat,lng){
-  const x=((lng-MIN_LNG)/(MAX_LNG-MIN_LNG))*lot.clientWidth;
-  const y=((MAX_LAT-lat)/(MAX_LAT-MIN_LAT))*lot.clientHeight;
-  const dx=x-((userLng-MIN_LNG)/(MAX_LNG-MIN_LNG))*lot.clientWidth;
-  const dy=y-((MAX_LAT-userLat)/(MAX_LAT-MIN_LAT))*lot.clientHeight;
-  return {x:dx, y:dy};
+  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
+  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
+  return {x: dx, y: dy};
 }
 
 /* ==== ロッド描画 ==== */
@@ -110,74 +111,61 @@ function renderRods(){
 }
 renderRods();
 
-/* ==== B3ルート ==== */
-function drawRoute(){
-  canvas.width=lot.clientWidth;
-  canvas.height=lot.clientHeight;
-  const b3=rods.find(r=>r.id==="B3");
-  if(!b3) return;
-  const path=[
-    {lat:userLat,lng:userLng},
-    {lat:userLat,lng:b3.lng},
-    {lat:b3.lat,lng:b3.lng}
-  ];
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.beginPath();
-  path.forEach((p,i)=>{
-    const rel=gpsToRelative(p.lat,p.lng);
-    const x=lot.clientWidth/2+rel.x;
-    const y=lot.clientHeight/2+rel.y;
-    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
-  });
-  ctx.strokeStyle="yellow";
-  ctx.lineWidth=4;
-  ctx.stroke();
-}
+/* ==== 開発モード：クリック・コントローラー ==== */
+container.addEventListener("click", e=>{
+ const rect=container.getBoundingClientRect();
+ const x=e.clientX-rect.left, y=e.clientY-rect.top;
+ userLat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
+ userLng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
+});
 
-/* ==== 移動ボタン ==== */
 const moveStepLat=(MAX_LAT-MIN_LAT)/50;
 const moveStepLng=(MAX_LNG-MIN_LNG)/50;
-function moveUp(){ userLat+=moveStepLat; drawRoute(); }
-function moveDown(){ userLat-=moveStepLat; drawRoute(); }
-function moveLeft(){ userLng-=moveStepLng; drawRoute(); }
-function moveRight(){ userLng+=moveStepLng; drawRoute(); }
+function moveUp(){ if(userLat!==null) userLat+=moveStepLat; }
+function moveDown(){ if(userLat!==null) userLat-=moveStepLat; }
+function moveLeft(){ if(userLng!==null) userLng-=moveStepLng; }
+function moveRight(){ if(userLng!==null) userLng+=moveStepLng; }
 
 document.getElementById("up").onclick=moveUp;
 document.getElementById("down").onclick=moveDown;
 document.getElementById("left").onclick=moveLeft;
 document.getElementById("right").onclick=moveRight;
+
 window.addEventListener("keydown", e=>{
-  switch(e.key){
-    case "ArrowUp": moveUp(); break;
-    case "ArrowDown": moveDown(); break;
-    case "ArrowLeft": moveLeft(); break;
-    case "ArrowRight": moveRight(); break;
-  }
+ switch(e.key){
+  case "ArrowUp": moveUp(); break;
+  case "ArrowDown": moveDown(); break;
+  case "ArrowLeft": moveLeft(); break;
+  case "ArrowRight": moveRight(); break;
+ }
 });
 
 /* ==== 方位センサ ==== */
 document.getElementById("enable-orientation").onclick=async()=>{
  if(typeof DeviceOrientationEvent?.requestPermission==="function"){
-   const res=await DeviceOrientationEvent.requestPermission();
-   if(res!=="granted") return alert("許可されていません");
+  const res=await DeviceOrientationEvent.requestPermission();
+  if(res!=="granted") return alert("方位センサが許可されていません");
  }
  window.addEventListener("deviceorientation", e=>{
-   if(e.webkitCompassHeading!=null) deviceHeading=e.webkitCompassHeading;
-   else if(e.alpha!=null) deviceHeading=360-e.alpha;
-   document.getElementById("orientation").textContent=`向き：${deviceHeading?.toFixed(0)}°`;
+  if(e.webkitCompassHeading!=null) deviceHeading=e.webkitCompassHeading;
+  else if(e.alpha!=null) deviceHeading=360-e.alpha;
+  document.getElementById("orientation").textContent=`向き：${deviceHeading?.toFixed(0)}°`;
  });
 };
 
-/* ==== Socket.IO他人の位置 ==== */
+/* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
-    if(id===socket.id) continue;
+    if(id === socket.id) continue; 
     if(!others[id]){
-      const m=document.createElement("div");
-      m.className="user-marker-other";
+      const m = document.createElement("div");
+      m.className = "user-marker-other";
       lot.appendChild(m);
-      others[id]={marker:m,lat:data[id].lat,lng:data[id].lng};
-    } else { others[id].lat=data[id].lat; others[id].lng=data[id].lng; }
+      others[id] = { marker: m, lat:data[id].lat, lng:data[id].lng };
+    } else {
+      others[id].lat = data[id].lat;
+      others[id].lng = data[id].lng;
+    }
   }
   for(const id in others){
     if(!data[id]){
@@ -188,37 +176,42 @@ socket.on("positions", data=>{
 });
 
 /* ==== 自分の位置送信 ==== */
-function sendMyPosition(){ if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng}); }
+function sendMyPosition(){
+ if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng});
+}
 
 /* ==== メインループ ==== */
 (function loop(){
-  if(userLat!==null && userLng!==null){
-    document.getElementById("location").textContent=
-      `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+ if(userLat!==null && userLng!==null){
+  document.getElementById("location").textContent=
+   `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-    // ロッド位置
-    document.querySelectorAll(".rod").forEach((d,i)=>{
-      const r=rods[i];
-      const rel=gpsToRelative(r.lat,r.lng);
-      d.style.left=(lot.clientWidth/2+rel.x)+"px";
-      d.style.top=(lot.clientHeight/2+rel.y)+"px";
-    });
+  // ロッドを自分基準で相対配置
+  document.querySelectorAll(".rod").forEach((d,i)=>{
+    const r = rods[i];
+    const rel = gpsToRelative(r.lat,r.lng);
+    d.style.left = (lot.clientWidth/2 + rel.x) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
+  });
 
-    // 他人マーカー
-    for(const id in others){
-      const o=others[id];
-      const rel=gpsToRelative(o.lat,o.lng);
-      o.marker.style.left=(lot.clientWidth/2+rel.x-7)+"px";
-      o.marker.style.top=(lot.clientHeight/2+rel.y-7)+"px";
-    }
-
-    // UI回転
-    lot.style.transform=deviceHeading!=null?`rotate(${-deviceHeading}deg)`:`rotate(0deg)`;
-
-    drawRoute();
-    sendMyPosition();
+  // 他人マーカー
+  for(const id in others){
+    const o = others[id];
+    const rel = gpsToRelative(o.lat,o.lng);
+    o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
+    o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
   }
-  requestAnimationFrame(loop);
+
+  // UI回転
+  if(deviceHeading!=null){
+    lot.style.transform = `rotate(${-deviceHeading}deg)`;
+  } else {
+    lot.style.transform = `rotate(0deg)`;
+  }
+
+  sendMyPosition();
+ }
+ requestAnimationFrame(loop);
 })();
 </script>
 </body>
