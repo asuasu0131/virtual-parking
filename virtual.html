@@ -16,7 +16,27 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 .empty{background:#4caf50;} .full{background:#f44336;}
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1000; display:none;}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:999;}
-#heading-arrow{position:absolute; width:20px; height:3px; background:red; transform-origin:left center; z-index:1001; display:none;}
+
+/* ==== 方位矢印 ==== */
+#heading-arrow {
+  position:absolute;
+  width:2px;  /* 矢印の棒の太さ */
+  height:30px; /* 矢印の長さ */
+  background:red;
+  transform-origin:bottom center; /* 回転基準は下端 */
+  z-index:1001;
+  display:none;
+}
+#heading-arrow::after {
+  content:"";
+  position:absolute;
+  bottom:100%; /* 棒の上端に */
+  left:50%;
+  transform:translateX(-50%);
+  border-left:6px solid transparent;
+  border-right:6px solid transparent;
+  border-bottom:8px solid red; /* 三角形の色 */
+}
 </style>
 </head>
 <body>
@@ -65,7 +85,7 @@ const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
 
 /* ==== 他人の位置 ==== */
-const others = {}; // { socketId: {lat,lng,marker} }
+const others = {};
 
 /* ==== GPS→UI ==== */
 function gpsToUI(lat,lng){
@@ -171,13 +191,12 @@ function sendMyPosition(){
   m.style.top=(displayedPos.y-7)+"px";
   m.style.display="block";
 
-  // 方位矢印
+  // 方位矢印表示
   if(deviceHeading!==null){
     headingArrow.style.left=(displayedPos.x)+"px";
     headingArrow.style.top=(displayedPos.y)+"px";
-    headingArrow.style.width="30px"; // 矢印の長さ
-    headingArrow.style.transform=`rotate(${deviceHeading}deg)`;
     headingArrow.style.display="block";
+    headingArrow.style.transform=`rotate(${deviceHeading}deg)`;
   }
 
   document.getElementById("location").textContent=
