@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（回転UI＋方位対応）</title>
+<title>駐車場 空き状況ナビ（完全版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -12,16 +12,13 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 #controller { margin-bottom:8px; }
 
 #parking-lot-container {
-  position:relative;
-  width:100%; max-width:900px; aspect-ratio:9/6.5;
-  margin:auto; overflow:hidden; border-radius:10px;
-  background:#bfbfbf; cursor:crosshair;
+  position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5;
+  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
 }
 
 #parking-lot {
   position:absolute; width:100%; height:100%;
-  top:0; left:0;
-  transform-origin:center center;
+  top:0; left:0; transform-origin:center center;
 }
 
 .rod { position:absolute; width:33.33%; height:22%;
@@ -33,7 +30,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 
-/* 矢印（自分の向きは固定） */
+/* 自分の向き矢印 */
 #heading-arrow {
   position:absolute; width:2px; height:14px; background:red; z-index:1002;
   top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
@@ -45,7 +42,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（回転UI＋方位対応）</h1>
+<h1>駐車場 空き状況ナビ（完全版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -81,6 +78,7 @@ const rods=[
 
 let userLat=null, userLng=null;
 let deviceHeading=null;
+
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 
@@ -93,8 +91,8 @@ const others = {};
 
 /* ==== GPS→UI ==== */
 function gpsToUI(lat,lng){
-  const x = (lng-MIN_LNG)/(MAX_LNG-MIN_LNG)*lot.clientWidth;
-  const y = (MAX_LAT-lat)/(MAX_LAT-MIN_LAT)*lot.clientHeight;
+  const x = (lng-MIN_LNG)/(MAX_LNG-MIN_LNG)*lot.clientWidth - lot.clientWidth/2;
+  const y = (MAX_LAT-lat)/(MAX_LAT-MIN_LAT)*lot.clientHeight - lot.clientHeight/2;
   return {x,y};
 }
 
@@ -110,7 +108,7 @@ function renderRods(){
     lot.appendChild(d);
   });
 }
-renderRods(); // ページロード時に表示
+renderRods();
 
 /* ==== 開発モード：クリック・コントローラー ==== */
 container.addEventListener("click", e=>{
@@ -165,8 +163,8 @@ socket.on("positions", data=>{
       others[id] = { marker: m };
     }
     const p = gpsToUI(data[id].lat,data[id].lng);
-    others[id].marker.style.left = p.x + "px";
-    others[id].marker.style.top = p.y + "px";
+    others[id].marker.style.left = (lot.clientWidth/2 + p.x - 6) + "px";
+    others[id].marker.style.top = (lot.clientHeight/2 + p.y - 6) + "px";
   }
   for(const id in others){
     if(!data[id]){
@@ -190,9 +188,11 @@ function sendMyPosition(){
   sendMyPosition();
  }
 
- // 駐車場UI回転
+ // UI回転（自分は中央固定）
  if(deviceHeading!==null){
-   lot.style.transform = `rotate(${-deviceHeading}deg)`; // 北固定で回転
+   lot.style.transform = `translate(-50%, -50%) rotate(${-deviceHeading}deg)`;
+   lot.style.left = "50%";
+   lot.style.top = "50%";
  }
 
  requestAnimationFrame(loop);
