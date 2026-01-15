@@ -27,8 +27,8 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   border-top:3px solid white; border-bottom:3px solid white;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
-#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
-.user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
+#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; transform:translate(-50%,-50%);}
+.user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000; transform:translate(-50%,-50%);}
 
 /* 自分の向き矢印 */
 #heading-arrow {
@@ -92,11 +92,11 @@ const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 /* ==== 他人の位置 ==== */
 const others = {}; 
 
-/* ==== GPS→UI相対座標 ==== */
-function gpsToRelative(lat,lng){
-  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
-  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
-  return {x: dx, y: dy};
+/* ==== GPS→UI絶対座標 ==== */
+function gpsToXY(lat,lng){
+  const x = ((lng - MIN_LNG) / (MAX_LNG - MIN_LNG)) * lot.clientWidth;
+  const y = ((MAX_LAT - lat) / (MAX_LAT - MIN_LAT)) * lot.clientHeight;
+  return { x, y };
 }
 
 /* ==== ロッド描画 ==== */
@@ -115,8 +115,8 @@ renderRods();
 container.addEventListener("click", e=>{
  const rect=container.getBoundingClientRect();
  const x=e.clientX-rect.left, y=e.clientY-rect.top;
- userLat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
- userLng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
+ userLat = MAX_LAT - (y / lot.clientHeight) * (MAX_LAT - MIN_LAT);
+ userLng = MIN_LNG + (x / lot.clientWidth) * (MAX_LNG - MIN_LNG);
 });
 
 const moveStepLat=(MAX_LAT-MIN_LAT)/50;
@@ -186,21 +186,27 @@ function sendMyPosition(){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-  // ロッドを自分基準で相対配置
+  // ロッドを絶対座標で配置
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
-    const rel = gpsToRelative(r.lat,r.lng);
-    d.style.left = (lot.clientWidth/2 + rel.x) + "px";
-    d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
+    const pos = gpsToXY(r.lat, r.lng);
+    d.style.left = pos.x + "px";
+    d.style.top  = pos.y + "px";
   });
 
   // 他人マーカー
   for(const id in others){
     const o = others[id];
-    const rel = gpsToRelative(o.lat,o.lng);
-    o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
-    o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
+    const pos = gpsToXY(o.lat, o.lng);
+    o.marker.style.left = pos.x + "px";
+    o.marker.style.top  = pos.y + "px";
   }
+
+  // 自分マーカー
+  const selfPos = gpsToXY(userLat, userLng);
+  const selfMarker = document.getElementById("user-marker");
+  selfMarker.style.left = selfPos.x + "px";
+  selfMarker.style.top  = selfPos.y + "px";
 
   // UI回転
   if(deviceHeading!=null){
