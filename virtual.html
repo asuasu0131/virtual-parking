@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（完全版）</title>
+<title>駐車場 空き状況ナビ（A*経路版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -29,6 +29,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 .empty{background:#4caf50;} .full{background:#f44336;}
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
+.path-line { position:absolute; width:2px; height:2px; background:yellow; z-index:999; }
 
 /* 自分の向き矢印 */
 #heading-arrow {
@@ -42,7 +43,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（完全版）</h1>
+<h1>駐車場 空き状況ナビ（A*経路版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -76,28 +77,25 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
-/* ==== 初期位置（開発モード）==== */
-let userLat = (MIN_LAT+MAX_LAT)/2;   // 駐車場中央付近
-let userLng = (MIN_LNG+MAX_LNG)/2;
+/* ==== 通路ノード (px座標) ==== */
+const nodes=[
+  {id:"N1",x:100,y:50,edges:["N2"]},
+  {id:"N2",x:100,y:200,edges:["N1","N3","N5"]},
+  {id:"N3",x:300,y:200,edges:["N2","N4"]},
+  {id:"N4",x:500,y:200,edges:["N3","N6"]},
+  {id:"N5",x:100,y:400,edges:["N2","N7"]},
+  {id:"N6",x:500,y:400,edges:["N4","N8"]},
+  {id:"N7",x:100,y:600,edges:["N5","N8"]},
+  {id:"N8",x:500,y:600,edges:["N6","N7"]},
+  {id:"B3_NODE",x:550,y:600,edges:["N8"]} // B3直結
+];
 
+/* ==== 初期位置（開発モード）==== */
+let userX = 150, userY = 100; // px
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
-
-/* ==== Socket.IO接続 ==== */
-const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
-const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
-
-/* ==== 他人の位置 ==== */
-const others = {}; 
-
-/* ==== GPS→UI相対座標 ==== */
-function gpsToRelative(lat,lng){
-  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
-  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
-  return {x: dx, y: dy};
-}
 
 /* ==== ロッド描画 ==== */
 function renderRods(){
@@ -107,37 +105,25 @@ function renderRods(){
     d.className="rod "+(r.status===0?"empty":"full");
     d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
     lot.appendChild(d);
+    // UI座標にスナップ
+    if(r.id==="B3") d.style.left="540px", d.style.top="590px";
   });
 }
 renderRods();
 
-/* ==== 開発モード：クリック・コントローラー ==== */
-container.addEventListener("click", e=>{
- const rect=container.getBoundingClientRect();
- const x=e.clientX-rect.left, y=e.clientY-rect.top;
- userLat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
- userLng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
-});
-
-const moveStepLat=(MAX_LAT-MIN_LAT)/50;
-const moveStepLng=(MAX_LNG-MIN_LNG)/50;
-function moveUp(){ if(userLat!==null) userLat+=moveStepLat; }
-function moveDown(){ if(userLat!==null) userLat-=moveStepLat; }
-function moveLeft(){ if(userLng!==null) userLng-=moveStepLng; }
-function moveRight(){ if(userLng!==null) userLng+=moveStepLng; }
-
-document.getElementById("up").onclick=moveUp;
-document.getElementById("down").onclick=moveDown;
-document.getElementById("left").onclick=moveLeft;
-document.getElementById("right").onclick=moveRight;
-
+/* ==== 開発モード移動 ==== */
+const moveStep=10;
+document.getElementById("up").onclick  = ()=>{ userY-=moveStep; update(); };
+document.getElementById("down").onclick= ()=>{ userY+=moveStep; update(); };
+document.getElementById("left").onclick= ()=>{ userX-=moveStep; update(); };
+document.getElementById("right").onclick= ()=>{ userX+=moveStep; update(); };
 window.addEventListener("keydown", e=>{
- switch(e.key){
-  case "ArrowUp": moveUp(); break;
-  case "ArrowDown": moveDown(); break;
-  case "ArrowLeft": moveLeft(); break;
-  case "ArrowRight": moveRight(); break;
- }
+  switch(e.key){
+    case "ArrowUp": userY-=moveStep; update(); break;
+    case "ArrowDown": userY+=moveStep; update(); break;
+    case "ArrowLeft": userX-=moveStep; update(); break;
+    case "ArrowRight": userX+=moveStep; update(); break;
+  }
 });
 
 /* ==== 方位センサ ==== */
@@ -153,66 +139,75 @@ document.getElementById("enable-orientation").onclick=async()=>{
  });
 };
 
-/* ==== Socket.IO：他人の位置更新 ==== */
-socket.on("positions", data=>{
-  for(const id in data){
-    if(id === socket.id) continue; 
-    if(!others[id]){
-      const m = document.createElement("div");
-      m.className = "user-marker-other";
-      lot.appendChild(m);
-      others[id] = { marker: m, lat:data[id].lat, lng:data[id].lng };
-    } else {
-      others[id].lat = data[id].lat;
-      others[id].lng = data[id].lng;
+/* ==== A*経路探索 ==== */
+function heuristic(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+function astar(start,end){
+  const open=[{node:start,g:0,f:heuristic(start,end),parent:null}];
+  const closed=new Set();
+  while(open.length>0){
+    open.sort((a,b)=>a.f-b.f);
+    const current=open.shift();
+    if(current.node.id===end.id){
+      const path=[];
+      let c=current;
+      while(c){ path.unshift(c.node); c=c.parent; }
+      return path;
     }
+    closed.add(current.node.id);
+    current.node.edges.forEach(nid=>{
+      if(closed.has(nid)) return;
+      const neighbor=nodes.find(n=>n.id===nid);
+      const g=current.g+heuristic(current.node,neighbor);
+      const f=g+heuristic(neighbor,end);
+      const exist=open.find(o=>o.node.id===neighbor.id);
+      if(!exist || g<exist.g) open.push({node:neighbor,g,f,parent:current});
+    });
   }
-  for(const id in others){
-    if(!data[id]){
-      lot.removeChild(others[id].marker);
-      delete others[id];
-    }
-  }
-});
+  return [];
+}
 
-/* ==== 自分の位置送信 ==== */
-function sendMyPosition(){
- if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng});
+/* ==== 経路描画 ==== */
+let pathLines=[];
+function drawPath(path){
+  pathLines.forEach(l=>lot.removeChild(l));
+  pathLines=[];
+  for(let i=0;i<path.length-1;i++){
+    const l=document.createElement("div");
+    l.className="path-line";
+    const dx=path[i+1].x-path[i].x;
+    const dy=path[i+1].y-path[i].y;
+    const dist=Math.hypot(dx,dy);
+    const angle=Math.atan2(dy,dx)*180/Math.PI;
+    l.style.width=dist+"px";
+    l.style.height="2px";
+    l.style.background="yellow";
+    l.style.position="absolute";
+    l.style.left=path[i].x+"px";
+    l.style.top=path[i].y+"px";
+    l.style.transform=`rotate(${angle}deg)`;
+    lot.appendChild(l);
+    pathLines.push(l);
+  }
 }
 
 /* ==== メインループ ==== */
-(function loop(){
- if(userLat!==null && userLng!==null){
-  document.getElementById("location").textContent=
-   `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+function update(){
+  // ユーザーマーカー
+  const marker=document.getElementById("user-marker");
+  marker.style.left=userX+"px";
+  marker.style.top=userY+"px";
 
-  // ロッドを自分基準で相対配置
-  document.querySelectorAll(".rod").forEach((d,i)=>{
-    const r = rods[i];
-    const rel = gpsToRelative(r.lat,r.lng);
-    d.style.left = (lot.clientWidth/2 + rel.x) + "px";
-    d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
-  });
+  // B3までの経路探索
+  const startNode=nodes.reduce((prev,curr)=>
+    heuristic({x:userX,y:userY},curr) < heuristic({x:userX,y:userY},prev)?curr:prev
+  );
+  const endNode=nodes.find(n=>n.id==="B3_NODE");
+  const path=astar(startNode,endNode);
+  drawPath(path);
 
-  // 他人マーカー
-  for(const id in others){
-    const o = others[id];
-    const rel = gpsToRelative(o.lat,o.lng);
-    o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
-    o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
-  }
-
-  // UI回転
-  if(deviceHeading!=null){
-    lot.style.transform = `rotate(${-deviceHeading}deg)`;
-  } else {
-    lot.style.transform = `rotate(0deg)`;
-  }
-
-  sendMyPosition();
- }
- requestAnimationFrame(loop);
-})();
+  // TODO: 方位矢印をユーザーに追従させる
+}
+update();
 </script>
 </body>
 </html>
