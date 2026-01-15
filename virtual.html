@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（A* + 矢印追従）</title>
+<title>駐車場 空き状況ナビ（A* + ロッド描画 + 矢印）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -21,14 +21,13 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   top:0; left:0;
 }
 
-.rod { position:absolute; width:33.33%; height:22%;
+.rod { position:absolute; width:40px; height:30px;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
-  color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px);
-  border-top:3px solid white; border-bottom:3px solid white;
+  color:white; font-weight:bold; font-size:12px;
+  border:2px solid white; border-radius:4px;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; transform:translate(-50%,-50%);}
-.user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 .path-line { position:absolute; width:2px; height:2px; background:yellow; z-index:999; }
 
 /* 自分の向き矢印 */
@@ -43,7 +42,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（A* + 矢印追従）</h1>
+<h1>駐車場 空き状況ナビ（A* + ロッド + 矢印）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -62,31 +61,46 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </div>
 
 <script>
-/* ==== 通路ノード (px座標) ==== */
-const nodes=[
-  {id:"N1",x:100,y:50,edges:["N2"]},
-  {id:"N2",x:100,y:200,edges:["N1","N3","N5"]},
-  {id:"N3",x:300,y:200,edges:["N2","N4"]},
-  {id:"N4",x:500,y:200,edges:["N3","N6"]},
-  {id:"N5",x:100,y:400,edges:["N2","N7"]},
-  {id:"N6",x:500,y:400,edges:["N4","N8"]},
-  {id:"N7",x:100,y:600,edges:["N5","N8"]},
-  {id:"N8",x:500,y:600,edges:["N6","N7"]},
-  {id:"B3_NODE",x:550,y:600,edges:["N8"]}
-];
-
-/* ==== ロッド ==== */
-const rods=[
- {id:"B3",x:540,y:590,status:0} // 経路案内対象
-];
-
-/* ==== 初期位置（開発モード）==== */
-let userX = 150, userY = 100; // px
-let deviceHeading = null;
-
 const lot=document.getElementById("parking-lot");
 const userMarker=document.getElementById("user-marker");
 const headingArrow=document.getElementById("heading-arrow");
+
+/* ==== ロッド（px座標） ==== */
+const rods=[
+ {id:"A1",x:100,y:50,status:0},
+ {id:"A2",x:100,y:100,status:1},
+ {id:"A3",x:100,y:150,status:0},
+ {id:"B1",x:300,y:50,status:0},
+ {id:"B2",x:300,y:100,status:1},
+ {id:"B3",x:300,y:150,status:0} // 案内対象
+];
+
+/* ==== 通路ノード (px座標) ==== */
+const nodes=[
+  {id:"N1",x:90,y:40,edges:["N2"]},
+  {id:"N2",x:90,y:100,edges:["N1","N3","N5"]},
+  {id:"N3",x:90,y:150,edges:["N2","B3_NODE"]},
+  {id:"B3_NODE",x:300,y:150,edges:["N3"]}
+];
+
+/* ==== 初期位置（開発モード） ==== */
+let userX = 80, userY = 40;
+let deviceHeading = null;
+let pathLines=[];
+
+/* ==== ロッド描画 ==== */
+function renderRods(){
+  document.querySelectorAll(".rod").forEach(e=>e.remove());
+  rods.forEach(r=>{
+    const d=document.createElement("div");
+    d.className="rod "+(r.status===0?"empty":"full");
+    d.style.left=r.x+"px";
+    d.style.top=r.y+"px";
+    d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
+    lot.appendChild(d);
+  });
+}
+renderRods();
 
 /* ==== 開発モード移動 ==== */
 const moveStep=10;
@@ -116,7 +130,7 @@ document.getElementById("enable-orientation").onclick=async()=>{
  });
 };
 
-/* ==== A*経路探索 ==== */
+/* ==== A* ==== */
 function heuristic(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
 function astar(start,end){
   const open=[{node:start,g:0,f:heuristic(start,end),parent:null}];
@@ -144,7 +158,6 @@ function astar(start,end){
 }
 
 /* ==== 経路描画 ==== */
-let pathLines=[];
 function drawPath(path){
   pathLines.forEach(l=>lot.removeChild(l));
   pathLines=[];
@@ -167,11 +180,10 @@ function drawPath(path){
 
 /* ==== メイン更新 ==== */
 function update(){
-  // ユーザーマーカー
+  document.getElementById("location").textContent=`現在地：${userX},${userY}`;
   userMarker.style.left=userX+"px";
   userMarker.style.top=userY+"px";
 
-  // 経路探索
   const startNode=nodes.reduce((prev,curr)=>
     heuristic({x:userX,y:userY},curr) < heuristic({x:userX,y:userY},prev)?curr:prev
   );
@@ -179,11 +191,9 @@ function update(){
   const path=astar(startNode,endNode);
   drawPath(path);
 
-  // 矢印をユーザー位置に追従
+  // 矢印追従
   headingArrow.style.left=userX+"px";
   headingArrow.style.top=userY+"px";
-
-  // 経路方向に矢印回転
   if(path.length>1){
     const dx=path[1].x - path[0].x;
     const dy=path[1].y - path[0].y;
