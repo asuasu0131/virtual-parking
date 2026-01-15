@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（案内矢印対応）</title>
+<title>駐車場 空き状況ナビ（案内矢印対応・UI維持）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -25,6 +25,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   transform-origin: center center;
 }
 
+/* ロッドUIは元のまま */
 .rod { position:absolute;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px);
@@ -56,7 +57,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（案内矢印対応）</h1>
+<h1>駐車場 空き状況ナビ（案内矢印対応・UI維持）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -68,7 +69,6 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   <button id="right">→</button>
 </div>
 
-<!-- ズームスライダー -->
 <input type="range" id="zoom-slider" min="0.5" max="2" step="0.01" value="1">
 
 <div id="parking-lot-container">
@@ -84,7 +84,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 const MIN_LAT=38.16742, MAX_LAT=38.16752;
 const MIN_LNG=140.86561, MAX_LNG=140.86591;
 
-/* ==== ロッド（座標は中心） ==== */
+/* ==== ロッド（中心座標） ==== */
 const rods=[
  {id:"A1",lat:38.167485,lng:140.865615,status:0,row:1,col:1},
  {id:"A2",lat:38.16746 ,lng:140.865615,status:1,row:2,col:1},
@@ -108,7 +108,6 @@ const routeArrow=document.getElementById("route-arrow");
 /* ==== Socket.IO接続 ==== */
 const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
-
 const others = {}; 
 
 /* ==== GPS→UI相対座標 ==== */
@@ -118,7 +117,7 @@ function gpsToRelative(lat,lng){
   return {x: dx, y: dy};
 }
 
-/* ==== ロッド描画 ==== */
+/* ==== ロッド描画（UIは元通り） ==== */
 function renderRods(){
   document.querySelectorAll(".rod").forEach(e=>e.remove());
   rods.forEach(r=>{
@@ -196,13 +195,11 @@ function sendMyPosition(){ if(userLat!==null) socket.emit("update_position",{lat
 /* ==== ズームスライダー ==== */
 zoomSlider.addEventListener("input", ()=>{ zoomScale = parseFloat(zoomSlider.value); });
 
-/* ==== 目的地案内矢印（中心から固定長） ==== */
+/* ==== 目的地案内矢印 ==== */
 function drawRouteArrow(targetRod){
   const rel = gpsToRelative(targetRod.lat, targetRod.lng);
-  const dx = rel.x;
-  const dy = rel.y;
-  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-  const arrowLength = 50; // 矢印の長さ固定
+  const angle = Math.atan2(rel.y, rel.x) * 180 / Math.PI;
+  const arrowLength = 50;
   routeArrow.style.display = "block";
   routeArrow.style.height = arrowLength + "px";
   routeArrow.style.left = lot.clientWidth/2 + "px";
@@ -219,12 +216,9 @@ function drawRouteArrow(targetRod){
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
     const rel = gpsToRelative(r.lat,r.lng);
-    const baseWidth = 50; // 幅固定
-    const baseHeight = 33; // 高さ固定
-    d.style.width  = baseWidth + "px";
-    d.style.height = baseHeight + "px";
-    d.style.left   = lot.clientWidth/2 + rel.x - baseWidth/2 + "px";
-    d.style.top    = lot.clientHeight/2 + rel.y - baseHeight/2 + "px";
+    // UIは元のまま（flex・font・border保持）
+    d.style.left   = lot.clientWidth/2 + rel.x - d.offsetWidth/2 + "px";
+    d.style.top    = lot.clientHeight/2 + rel.y - d.offsetHeight/2 + "px";
   });
 
   for(const id in others){
@@ -234,10 +228,9 @@ function drawRouteArrow(targetRod){
     o.marker.style.top  = lot.clientHeight/2 + rel.y -6 + "px";
   }
 
-  // UI回転・ズーム
   lot.style.transform = `scale(${zoomScale}) rotate(${deviceHeading!=null?-deviceHeading:0}deg)`;
 
-  // 空きロッドへの案内（例：B3）
+  // 空きロッドへの案内（B3）
   const target = rods.find(r=>r.id==="B3" && r.status===0);
   if(target) drawRouteArrow(target);
 
