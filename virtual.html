@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>駐車場 空き状況ナビ（開発モード）</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<style>
+body {
+  font-family: sans-serif;
+  background: #cfcfcf;
+  padding: 8px;
+  margin: 0;
+  text-align: center;
+}
+h1 {
+  font-size: clamp(18px,4vw,26px);
+  margin: 6px 0;
+}
+#location {
+  background: #fff;
+  padding: 8px;
+  margin-bottom: 6px;
+  border-radius: 6px;
+  font-size: clamp(12px,3vw,14px);
+}
+#orientation {
+  background:#fff;
+  padding:6px;
+  margin-bottom:8px;
+  border-radius:6px;
+  font-size:13px;
+}
+button {
+  padding:8px 14px;
+  font-size:14px;
+  margin-bottom:8px;
+}
+#parking-lot {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  aspect-ratio: 9/6.5;
+  margin: auto;
+  background: #bfbfbf;
+  overflow: hidden;
+  border-radius: 10px;
+  cursor: crosshair;
+}
+.rod {
+  position: absolute;
+  width: 33.33%;
+  height: 22%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: bold;
+  font-size: clamp(14px,3.5vw,24px);
+  border-top: 3px solid white;
+  border-bottom: 3px solid white;
+}
+.empty { background:#4caf50; }
+.full  { background:#f44336; }
+.nearest {
+  outline: 4px solid yellow;
+  box-shadow: 0 0 14px rgba(255,255,0,0.9);
+}
+.distance {
+  font-size: clamp(10px,2.5vw,14px);
+  font-weight: normal;
+}
+#user-marker {
+  position:absolute;
+  width:14px;
+  height:14px;
+  background:#2196f3;
+  border-radius:50%;
+  border:2px solid white;
+  z-index:1000;
+  display:none;
+}
+.user-marker-other {
+  position:absolute;
+  width:12px;
+  height:12px;
+  background:#ff9800;
+  border:2px solid white;
+  border-radius:50%;
+  z-index:999;
+}
+#arrow {
+  position:absolute;
+  height:3px;
+  background:red;
+  transform-origin:left center;
+  z-index:900;
+  display:none;
+}
+</style>
+</head>
+
+<body>
+<h1>駐車場 空き状況ナビ（開発モード）</h1>
+<div id="location">現在地をクリックしてください</div>
+<div id="orientation">向き：未取得</div>
+<button id="enable-orientation">方位センサを有効化</button>
+
+<div id="parking-lot">
+  <div id="user-marker"></div>
+  <div id="arrow"></div>
+</div>
+
+<script>
+/* ==== 駐車場範囲 ==== */
+const MIN_LAT=38.16742, MAX_LAT=38.16752;
+const MIN_LNG=140.86561, MAX_LNG=140.86591;
+
+/* ==== ロッド ==== */
+const rods=[
+ {id:"A1",lat:38.16748,lng:140.86561,status:0,row:1,col:1},
+ {id:"A2",lat:38.16746,lng:140.86561,status:1,row:2,col:1},
+ {id:"A3",lat:38.16744,lng:140.86561,status:0,row:3,col:1},
+ {id:"B1",lat:38.16748,lng:140.86591,status:0,row:1,col:3},
+ {id:"B2",lat:38.16746,lng:140.86591,status:1,row:2,col:3},
+ {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
+];
+
+let userLat=null, userLng=null;
+let displayedPos=null;
+let deviceHeading=null;
+
+const lot=document.getElementById("parking-lot");
+const arrow=document.getElementById("arrow");
+
+/* ==== GPS → UI ==== */
+function gpsToUI(lat,lng){
+ return {
+  x:(lng-MIN_LNG)/(MAX_LNG-MIN_LNG)*lot.clientWidth,
+  y:(MAX_LAT-lat)/(MAX_LAT-MIN_LAT)*lot.clientHeight
+ };
+}
+
+/* ==== 距離 ==== */
+function calcDistance(a,b,c,d){
+ const R=6371e3;
+ const φ1=a*Math.PI/180, φ2=c*Math.PI/180;
+ const dφ=(c-a)*Math.PI/180, dλ=(d-b)*Math.PI/180;
+ const x=Math.sin(dφ/2)**2+
+   Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+ return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+/* ==== 方位角 ==== */
+function bearing(a,b,c,d){
+ const φ1=a*Math.PI/180, φ2=c*Math.PI/180;
+ const λ1=b*Math.PI/180, λ2=d*Math.PI/180;
+ const y=Math.sin(λ2-λ1)*Math.cos(φ2);
+ const x=Math.cos(φ1)*Math.sin(φ2)-
+         Math.sin(φ1)*Math.cos(φ2)*Math.cos(λ2-λ1);
+ return (Math.atan2(y,x)*180/Math.PI+360)%360;
+}
+
+/* ==== 描画 ==== */
+function render(){
+ document.querySelectorAll(".rod").forEach(e=>e.remove());
+ if(!displayedPos) return;
+
+ let nearest=null, minDist=Infinity;
+
+ rods.forEach(r=>{
+  if(userLat!==null && r.status===0){
+   r.dist=calcDistance(userLat,userLng,r.lat,r.lng);
+   if(r.dist<minDist){minDist=r.dist; nearest=r;}
+  }
+ });
+
+ rods.forEach(r=>{
+  const d=document.createElement("div");
+  d.className="rod "+(r.status===0?"empty":"full");
+  if(nearest&&nearest.id===r.id)d.classList.add("nearest");
+  d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}${
+    r.dist?`<div class="distance">${r.dist.toFixed(1)}m</div>`:""
+  }`;
+  d.style.left=((r.col-1)/3*100)+"%";
+  d.style.top=((r.row-1)*22+30)+"%";
+  lot.appendChild(d);
+ });
+
+ if(nearest && userLat!==null){
+  const t=gpsToUI(nearest.lat,nearest.lng);
+  const dx=t.x-displayedPos.x, dy=t.y-displayedPos.y;
+  let ang=bearing(userLat,userLng,nearest.lat,nearest.lng);
+  if(deviceHeading!==null) ang-=deviceHeading;
+
+  arrow.style.width=Math.hypot(dx,dy)+"px";
+  arrow.style.left=displayedPos.x+"px";
+  arrow.style.top=displayedPos.y+"px";
+  arrow.style.transform=`rotate(${ang+90}deg)`;
+  arrow.style.display="block";
+ }
+}
+
+/* ==== 開発モード：クリックで現在地を設定 ==== */
+lot.addEventListener("click", e=>{
+ const rect=lot.getBoundingClientRect();
+ const x=e.clientX-rect.left;
+ const y=e.clientY-rect.top;
+ const lat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
+ const lng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
+ userLat=lat;
+ userLng=lng;
+ document.getElementById("location").textContent=
+  `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+});
+
+/* ==== 他人の位置はサーバー経由でそのまま表示 ==== */
+/* ここにSocket.ioやFlaskのrenderで渡されたusersデータ処理を追加可能 */
+
+/* ==== 方位センサ（iOS / Android） ==== */
+document.getElementById("enable-orientation").onclick=async()=>{
+ if(typeof DeviceOrientationEvent?.requestPermission==="function"){
+  const res=await DeviceOrientationEvent.requestPermission();
+  if(res!=="granted") return alert("方位センサが許可されていません");
+ }
+ window.addEventListener("deviceorientation",e=>{
+  if(e.webkitCompassHeading!=null){
+   deviceHeading=e.webkitCompassHeading; // iOS
+  }else if(e.alpha!=null){
+   deviceHeading=360-e.alpha; // Android
+  }
+  document.getElementById("orientation").textContent=
+   `向き：${deviceHeading?.toFixed(0)}°`;
+ });
+};
+
+/* ==== ループ ==== */
+(function loop(){
+ if(userLat!==null){
+  const t=gpsToUI(userLat,userLng);
+  if(!displayedPos)displayedPos={x:t.x,y:t.y};
+  displayedPos.x+=(t.x-displayedPos.x)*0.2;
+  displayedPos.y+=(t.y-displayedPos.y)*0.2;
+
+  const m=document.getElementById("user-marker");
+  m.style.left=(displayedPos.x-7)+"px";
+  m.style.top=(displayedPos.y-7)+"px";
+  m.style.display="block";
+
+  render();
+ }
+ requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
