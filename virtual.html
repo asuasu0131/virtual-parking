@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（完全版 修正版）</title>
+<title>駐車場 空き状況ナビ（完全版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -27,7 +27,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   border-top:3px solid white; border-bottom:3px solid white;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
-#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001;}
+#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 
 /* 自分の向き矢印 */
@@ -42,7 +42,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（完全版 修正版）</h1>
+<h1>駐車場 空き状況ナビ（完全版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -77,7 +77,7 @@ const rods=[
 ];
 
 /* ==== 初期位置（開発モード）==== */
-let userLat = (MIN_LAT+MAX_LAT)/2;
+let userLat = (MIN_LAT+MAX_LAT)/2;   // 駐車場中央付近
 let userLng = (MIN_LNG+MAX_LNG)/2;
 
 let deviceHeading=null;
@@ -92,11 +92,11 @@ const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 /* ==== 他人の位置 ==== */
 const others = {}; 
 
-/* ==== GPS→UI座標（駐車場左上を基準） ==== */
-function gpsToXY(lat,lng){
-  const x = ((lng - MIN_LNG)/(MAX_LNG - MIN_LNG)) * lot.clientWidth;
-  const y = ((MAX_LAT - lat)/(MAX_LAT - MIN_LAT)) * lot.clientHeight;
-  return {x,y};
+/* ==== GPS→UI相対座標 ==== */
+function gpsToRelative(lat,lng){
+  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
+  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
+  return {x: dx, y: dy};
 }
 
 /* ==== ロッド描画 ==== */
@@ -106,23 +106,19 @@ function renderRods(){
     const d=document.createElement("div");
     d.className="rod "+(r.status===0?"empty":"full");
     d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
-    const pos=gpsToXY(r.lat,r.lng);
-    d.style.left = pos.x + "px";
-    d.style.top  = pos.y + "px";
     lot.appendChild(d);
   });
 }
 renderRods();
 
-/* ==== 開発モード：クリック ==== */
+/* ==== 開発モード：クリック・コントローラー ==== */
 container.addEventListener("click", e=>{
  const rect=container.getBoundingClientRect();
  const x=e.clientX-rect.left, y=e.clientY-rect.top;
- userLat = MAX_LAT - (y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
- userLng = MIN_LNG + (x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
+ userLat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
+ userLng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
 });
 
-/* ==== 移動ボタン ==== */
 const moveStepLat=(MAX_LAT-MIN_LAT)/50;
 const moveStepLng=(MAX_LNG-MIN_LNG)/50;
 function moveUp(){ if(userLat!==null) userLat+=moveStepLat; }
@@ -134,6 +130,7 @@ document.getElementById("up").onclick=moveUp;
 document.getElementById("down").onclick=moveDown;
 document.getElementById("left").onclick=moveLeft;
 document.getElementById("right").onclick=moveRight;
+
 window.addEventListener("keydown", e=>{
  switch(e.key){
   case "ArrowUp": moveUp(); break;
@@ -189,25 +186,28 @@ function sendMyPosition(){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-  // 自分マーカー
-  const selfPos=gpsToXY(userLat,userLng);
-  const um=document.getElementById("user-marker");
-  um.style.left=selfPos.x+"px";
-  um.style.top=selfPos.y+"px";
+  // ロッドを自分基準で相対配置
+  document.querySelectorAll(".rod").forEach((d,i)=>{
+    const r = rods[i];
+    const rel = gpsToRelative(r.lat,r.lng);
+    d.style.left = (lot.clientWidth/2 + rel.x) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
+  });
 
-  // 他ユーザー
+  // 他人マーカー
   for(const id in others){
-    const o=others[id];
-    const pos=gpsToXY(o.lat,o.lng);
-    o.marker.style.left = (pos.x-6)+"px";
-    o.marker.style.top  = (pos.y-6)+"px";
+    const o = others[id];
+    const rel = gpsToRelative(o.lat,o.lng);
+    o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
+    o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
   }
 
-  // ロッド更新
-  renderRods();
-
-  // 回転
-  lot.style.transform = deviceHeading!=null?`rotate(${-deviceHeading}deg)`:"rotate(0deg)";
+  // UI回転
+  if(deviceHeading!=null){
+    lot.style.transform = `rotate(${-deviceHeading}deg)`;
+  } else {
+    lot.style.transform = `rotate(0deg)`;
+  }
 
   sendMyPosition();
  }
