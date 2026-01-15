@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（開発モード＋他人表示）</title>
+<title>駐車場 空き状況ナビ（方位矢印表示）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
 <style>
@@ -14,14 +14,13 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 #parking-lot { position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5; margin:auto; background:#bfbfbf; overflow:hidden; border-radius:10px; cursor:crosshair; }
 .rod { position:absolute; width:33.33%; height:22%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px); border-top:3px solid white; border-bottom:3px solid white; }
 .empty{background:#4caf50;} .full{background:#f44336;}
-.nearest{outline:4px solid yellow; box-shadow: 0 0 14px rgba(255,255,0,0.9);}
-.distance{font-size:clamp(10px,2.5vw,14px); font-weight:normal;}
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1000; display:none;}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:999;}
+#heading-arrow{position:absolute; width:20px; height:3px; background:red; transform-origin:left center; z-index:1001; display:none;}
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（開発モード＋他人表示）</h1>
+<h1>駐車場 空き状況ナビ（方位矢印表示）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -35,6 +34,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 
 <div id="parking-lot">
   <div id="user-marker"></div>
+  <div id="heading-arrow"></div>
 </div>
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
@@ -58,9 +58,10 @@ let displayedPos=null;
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
+const headingArrow=document.getElementById("heading-arrow");
 
 /* ==== Socket.IO接続 ==== */
-const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com"; // Render サーバ
+const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
 
 /* ==== 他人の位置 ==== */
@@ -131,7 +132,7 @@ document.getElementById("enable-orientation").onclick=async()=>{
 /* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
-    if(id === socket.id) continue; // 自分は表示しない
+    if(id === socket.id) continue;
     if(!others[id]){
       const m = document.createElement("div");
       m.className = "user-marker-other";
@@ -169,6 +170,15 @@ function sendMyPosition(){
   m.style.left=(displayedPos.x-7)+"px";
   m.style.top=(displayedPos.y-7)+"px";
   m.style.display="block";
+
+  // 方位矢印
+  if(deviceHeading!==null){
+    headingArrow.style.left=(displayedPos.x)+"px";
+    headingArrow.style.top=(displayedPos.y)+"px";
+    headingArrow.style.width="30px"; // 矢印の長さ
+    headingArrow.style.transform=`rotate(${deviceHeading}deg)`;
+    headingArrow.style.display="block";
+  }
 
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
