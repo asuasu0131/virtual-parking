@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（ズーム対応・中心座標版）</title>
+<title>駐車場 空き状況ナビ（案内付き）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -41,10 +41,16 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   content:""; position:absolute; bottom:100%; left:-4px;
   border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red;
 }
+
+/* 案内矢印 */
+#route-arrow {
+  position:absolute; width:2px; background:blue; z-index:1001;
+  transform-origin:bottom center; display:none;
+}
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（ズーム対応・中心座標版）</h1>
+<h1>駐車場 空き状況ナビ（案内付き）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -63,6 +69,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   <div id="parking-lot"></div>
   <div id="user-marker"></div>
   <div id="heading-arrow"></div>
+  <div id="route-arrow"></div>
 </div>
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
@@ -90,11 +97,10 @@ let zoomScale = 1;
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 const zoomSlider = document.getElementById("zoom-slider");
+const routeArrow = document.getElementById("route-arrow");
 
-/* ==== Socket.IO接続 ==== */
 const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
-
 const others = {}; 
 
 function gpsToRelative(lat,lng){
@@ -180,29 +186,52 @@ function sendMyPosition(){ if(userLat!==null) socket.emit("update_position",{lat
 /* ==== ズームスライダー ==== */
 zoomSlider.addEventListener("input", ()=>{ zoomScale = parseFloat(zoomSlider.value); });
 
+/* ==== 案内矢印描画 ==== */
+function drawRouteArrow(targetRod){
+  const rel = gpsToRelative(targetRod.lat, targetRod.lng);
+  const startX = lot.clientWidth/2;
+  const startY = lot.clientHeight/2;
+  const endX = startX + rel.x;
+  const endY = startY + rel.y;
+  const dx = endX - startX;
+  const dy = endY - startY;
+  const length = Math.sqrt(dx*dx + dy*dy);
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+
+  routeArrow.style.display = "block";
+  routeArrow.style.height = length + "px";
+  routeArrow.style.left = startX + "px";
+  routeArrow.style.top  = startY + "px";
+  routeArrow.style.transform = `translate(-50%,0) rotate(${angle}deg)`;
+}
+
 /* ==== メインループ ==== */
 (function loop(){
  if(userLat!==null && userLng!==null){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
+  // ロッド描画（中心座標適用）
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
-    const rel = gpsToRelative(r.lat,r.lng);
-
-    // ロッドの幅・高さそのままに中心座標に対応
-    const w = d.offsetWidth;
-    const h = d.offsetHeight;
-    d.style.left = (lot.clientWidth/2 + rel.x - w/2) + "px";
-    d.style.top  = (lot.clientHeight/2 + rel.y - h/2) + "px";
+    const rel = gpsToRelative(r.lat, r.lng);
+    const baseWidth = d.clientWidth;
+    const baseHeight = d.clientHeight;
+    d.style.left = (lot.clientWidth/2 + rel.x - baseWidth/2) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y - baseHeight/2) + "px";
   });
 
+  // 他人マーカー
   for(const id in others){
     const o = others[id];
     const rel = gpsToRelative(o.lat,o.lng);
     o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
     o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
   }
+
+  // 案内矢印（最初の空きロッドに向ける）
+  const firstEmpty = rods.find(r=>r.status===0);
+  if(firstEmpty) drawRouteArrow(firstEmpty);
 
   lot.style.transform = `scale(${zoomScale}) rotate(${deviceHeading!=null?-deviceHeading:0}deg)`;
 
