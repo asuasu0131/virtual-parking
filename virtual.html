@@ -18,7 +18,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 
 #parking-lot {
   position:absolute; width:100%; height:100%;
-  top:0; left:0; transform-origin:center center;
+  top:0; left:0;
 }
 
 .rod { position:absolute; width:33.33%; height:22%;
@@ -89,11 +89,11 @@ const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 /* ==== 他人の位置 ==== */
 const others = {}; 
 
-/* ==== GPS→UI ==== */
-function gpsToUI(lat,lng){
-  const x = (lng-MIN_LNG)/(MAX_LNG-MIN_LNG)*lot.clientWidth - lot.clientWidth/2;
-  const y = (MAX_LAT-lat)/(MAX_LAT-MIN_LAT)*lot.clientHeight - lot.clientHeight/2;
-  return {x,y};
+/* ==== GPS→UI相対座標 ==== */
+function gpsToRelative(lat,lng){
+  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
+  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
+  return {x: dx, y: dy};
 }
 
 /* ==== ロッド描画 ==== */
@@ -103,8 +103,6 @@ function renderRods(){
     const d=document.createElement("div");
     d.className="rod "+(r.status===0?"empty":"full");
     d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
-    d.style.left=((r.col-1)/3*100)+"%";
-    d.style.top=((r.row-1)*22+30)+"%";
     lot.appendChild(d);
   });
 }
@@ -160,11 +158,11 @@ socket.on("positions", data=>{
       const m = document.createElement("div");
       m.className = "user-marker-other";
       lot.appendChild(m);
-      others[id] = { marker: m };
+      others[id] = { marker: m, lat:data[id].lat, lng:data[id].lng };
+    } else {
+      others[id].lat = data[id].lat;
+      others[id].lng = data[id].lng;
     }
-    const p = gpsToUI(data[id].lat,data[id].lng);
-    others[id].marker.style.left = (lot.clientWidth/2 + p.x - 6) + "px";
-    others[id].marker.style.top = (lot.clientHeight/2 + p.y - 6) + "px";
   }
   for(const id in others){
     if(!data[id]){
@@ -181,20 +179,35 @@ function sendMyPosition(){
 
 /* ==== メインループ ==== */
 (function loop(){
- if(userLat!==null){
+ if(userLat!==null && userLng!==null){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
+  // ロッドを自分基準で相対配置
+  document.querySelectorAll(".rod").forEach((d,i)=>{
+    const r = rods[i];
+    const rel = gpsToRelative(r.lat,r.lng);
+    d.style.left = (lot.clientWidth/2 + rel.x) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
+  });
+
+  // 他人マーカー
+  for(const id in others){
+    const o = others[id];
+    const rel = gpsToRelative(o.lat,o.lng);
+    o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
+    o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
+  }
+
+  // UI回転
+  if(deviceHeading!=null){
+    lot.style.transform = `rotate(${-deviceHeading}deg)`;
+  } else {
+    lot.style.transform = `rotate(0deg)`;
+  }
+
   sendMyPosition();
  }
-
- // UI回転（自分は中央固定）
- if(deviceHeading!==null){
-   lot.style.transform = `translate(-50%, -50%) rotate(${-deviceHeading}deg)`;
-   lot.style.left = "50%";
-   lot.style.top = "50%";
- }
-
  requestAnimationFrame(loop);
 })();
 </script>
