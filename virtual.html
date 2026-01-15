@@ -22,7 +22,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 #heading-arrow {
   position:absolute;
   width:2px;
-  height:30px;
+  height:10px;
   background:red;
   z-index:1001;
   display:none;
@@ -195,7 +195,7 @@ function sendMyPosition(){
   // 矢印描画
   if(deviceHeading!==null){
     const arrowEl=document.getElementById("heading-arrow");
-    const arrowHeight = 30;
+    const arrowHeight = 10;
     arrowEl.style.left = displayedPos.x + "px";
     arrowEl.style.top = (displayedPos.y - arrowHeight) + "px";
     arrowEl.style.display="block";
