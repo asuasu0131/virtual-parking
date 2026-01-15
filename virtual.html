@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（開発モード＋他人表示）</title>
+<title>駐車場 空き状況ナビ（開発モード＋方位表示）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
 <style>
@@ -11,39 +11,36 @@ h1 { font-size:clamp(18px,4vw,26px); margin:6px 0; }
 #location,#orientation { background:#fff; padding:6px 8px; margin-bottom:6px; border-radius:6px; font-size:13px; }
 button { padding:6px 10px; font-size:14px; margin:2px; }
 #controller { margin-bottom:8px; }
-
 #parking-lot { position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5; margin:auto; background:#bfbfbf; overflow:hidden; border-radius:10px; cursor:crosshair; }
 .rod { position:absolute; width:33.33%; height:22%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px); border-top:3px solid white; border-bottom:3px solid white; }
 .empty{background:#4caf50;} .full{background:#f44336;}
 .nearest{outline:4px solid yellow; box-shadow: 0 0 14px rgba(255,255,0,0.9);}
 .distance{font-size:clamp(10px,2.5vw,14px); font-weight:normal;}
-
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1000; display:none;}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:999;}
-
+/* ==== 方位矢印 ==== */
 #heading-arrow {
   position:absolute;
   width:2px;
   height:30px;
   background:red;
-  transform-origin:bottom center;
   z-index:1001;
   display:none;
+  transform-origin:bottom center;
 }
 #heading-arrow::after {
   content:"";
   position:absolute;
   bottom:100%;
-  left:50%;
-  transform:translateX(-50%);
-  border-left:6px solid transparent;
-  border-right:6px solid transparent;
-  border-bottom:8px solid red;
+  left:-5px;
+  border-left:5px solid transparent;
+  border-right:5px solid transparent;
+  border-bottom:10px solid red;
 }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（開発モード＋他人表示）</h1>
+<h1>駐車場 空き状況ナビ（開発モード＋方位表示）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -81,43 +78,31 @@ let displayedPos=null;
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
+const arrow=document.getElementById("heading-arrow");
 
 /* ==== Socket.IO接続 ==== */
 const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
-const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
+const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 
 /* ==== 他人の位置 ==== */
-const others = {};
+const others = {}; 
 
 /* ==== GPS→UI ==== */
 function gpsToUI(lat,lng){
  return { x:(lng-MIN_LNG)/(MAX_LNG-MIN_LNG)*lot.clientWidth, y:(MAX_LAT-lat)/(MAX_LAT-MIN_LAT)*lot.clientHeight };
 }
 
-/* ==== 距離計算 ==== */
-function calcDistance(a,b,c,d){
- const R=6371e3;
- const φ1=a*Math.PI/180, φ2=c*Math.PI/180;
- const dφ=(c-a)*Math.PI/180, dλ=(d-b)*Math.PI/180;
- const x=Math.sin(dφ/2)**2+Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
- return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
-}
-
 /* ==== 描画 ==== */
 function render(){
- document.querySelectorAll(".rod").forEach(e=>e.remove());
- rods.forEach(r=>{
-  const d=document.createElement("div");
-  d.className="rod "+(r.status===0?"empty":"full");
-  d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}${
-    r.dist?`<div class="distance">${r.dist.toFixed(1)}m</div>`:""
-  }`;
-  d.style.left=((r.col-1)/3*100)+"%";
-  d.style.top=((r.row-1)*22+30)+"%";
-  lot.appendChild(d);
- });
-
-  // 他人マーカーはここでは描画済み
+  document.querySelectorAll(".rod").forEach(e=>e.remove());
+  rods.forEach(r=>{
+    const d=document.createElement("div");
+    d.className="rod "+(r.status===0?"empty":"full");
+    d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
+    d.style.left=((r.col-1)/3*100)+"%";
+    d.style.top=((r.row-1)*22+30)+"%";
+    lot.appendChild(d);
+  });
 }
 
 /* ==== 開発モード：クリック・コントローラー ==== */
@@ -165,7 +150,7 @@ document.getElementById("enable-orientation").onclick=async()=>{
 /* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
-    if(id === socket.id) continue;
+    if(id === socket.id) continue; 
     if(!others[id]){
       const m = document.createElement("div");
       m.className = "user-marker-other";
@@ -199,24 +184,23 @@ function sendMyPosition(){
   displayedPos.x+=(t.x-displayedPos.x)*0.2;
   displayedPos.y+=(t.y-displayedPos.y)*0.2;
 
-  // マーカー
   const m=document.getElementById("user-marker");
-  const markerSize=14;
-  m.style.left=(displayedPos.x-markerSize/2)+"px";
-  m.style.top=(displayedPos.y-markerSize/2)+"px";
+  m.style.left=(displayedPos.x-7)+"px";
+  m.style.top=(displayedPos.y-7)+"px";
   m.style.display="block";
-
-  // 方位矢印
-  if(deviceHeading!==null){
-    const arrowEl=document.getElementById("heading-arrow");
-    arrowEl.style.left = displayedPos.x + "px";
-    arrowEl.style.top = displayedPos.y + "px";
-    arrowEl.style.display="block";
-    arrowEl.style.transform=`rotate(${deviceHeading}deg)`;
-  }
 
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+
+  // 矢印描画
+  if(deviceHeading!==null){
+    const arrowEl=document.getElementById("heading-arrow");
+    const arrowHeight = 30;
+    arrowEl.style.left = displayedPos.x + "px";
+    arrowEl.style.top = (displayedPos.y - arrowHeight) + "px";
+    arrowEl.style.display="block";
+    arrowEl.style.transform=`rotate(${deviceHeading}deg)`;
+  }
 
   render();
   sendMyPosition();
