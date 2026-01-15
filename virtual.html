@@ -58,7 +58,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 <button id="enable-orientation">方位センサを有効化</button>
 
 <div id="zoom-slider-container">
-  <input type="range" id="zoom-slider" min="0.5" max="2.0" value="1" step="0.01">
+  <input type="range" id="zoom-slider" min="0.8" max="2.0" value="1.2" step="0.01">
 </div>
 
 <div id="controller">
@@ -94,7 +94,7 @@ const rods=[
 let userLat = (MIN_LAT+MAX_LAT)/2;
 let userLng = (MIN_LNG+MAX_LNG)/2;
 let deviceHeading=null;
-let zoomScale = 1;
+let zoomScale = 1.2; // 初期サイズを大きめに
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
@@ -209,8 +209,8 @@ function sendMyPosition(){
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
     const rel = gpsToRelative(r.lat,r.lng);
-    const baseWidth = 33; // 基準幅(px)
-    const baseHeight = 22; // 基準高さ(px)
+    const baseWidth = 50; // 初期幅を大きめ
+    const baseHeight = 33; // 初期高さを大きめ
     d.style.width = `${baseWidth*zoomScale}px`;
     d.style.height = `${baseHeight*zoomScale}px`;
     d.style.left = (lot.clientWidth/2 + rel.x*zoomScale - (baseWidth*zoomScale)/2) + "px";
