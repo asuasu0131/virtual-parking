@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（A*経路版）</title>
+<title>駐車場 空き状況ナビ（A* + 矢印追従）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -27,14 +27,14 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   border-top:3px solid white; border-bottom:3px solid white;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
-#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
+#user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 .path-line { position:absolute; width:2px; height:2px; background:yellow; z-index:999; }
 
 /* 自分の向き矢印 */
 #heading-arrow {
   position:absolute; width:2px; height:14px; background:red; z-index:1002;
-  top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
+  transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
 }
 #heading-arrow::after {
   content:""; position:absolute; bottom:100%; left:-4px;
@@ -43,7 +43,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（A*経路版）</h1>
+<h1>駐車場 空き状況ナビ（A* + 矢印追従）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -61,22 +61,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   <div id="heading-arrow"></div>
 </div>
 
-<script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <script>
-/* ==== 駐車場範囲 ==== */
-const MIN_LAT=38.16742, MAX_LAT=38.16752;
-const MIN_LNG=140.86561, MAX_LNG=140.86591;
-
-/* ==== ロッド ==== */
-const rods=[
- {id:"A1",lat:38.16748,lng:140.86561,status:0,row:1,col:1},
- {id:"A2",lat:38.16746,lng:140.86561,status:1,row:2,col:1},
- {id:"A3",lat:38.16744,lng:140.86561,status:0,row:3,col:1},
- {id:"B1",lat:38.16748,lng:140.86591,status:0,row:1,col:3},
- {id:"B2",lat:38.16746,lng:140.86591,status:1,row:2,col:3},
- {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
-];
-
 /* ==== 通路ノード (px座標) ==== */
 const nodes=[
   {id:"N1",x:100,y:50,edges:["N2"]},
@@ -87,29 +72,21 @@ const nodes=[
   {id:"N6",x:500,y:400,edges:["N4","N8"]},
   {id:"N7",x:100,y:600,edges:["N5","N8"]},
   {id:"N8",x:500,y:600,edges:["N6","N7"]},
-  {id:"B3_NODE",x:550,y:600,edges:["N8"]} // B3直結
+  {id:"B3_NODE",x:550,y:600,edges:["N8"]}
+];
+
+/* ==== ロッド ==== */
+const rods=[
+ {id:"B3",x:540,y:590,status:0} // 経路案内対象
 ];
 
 /* ==== 初期位置（開発モード）==== */
 let userX = 150, userY = 100; // px
-let deviceHeading=null;
+let deviceHeading = null;
 
 const lot=document.getElementById("parking-lot");
-const container=document.getElementById("parking-lot-container");
-
-/* ==== ロッド描画 ==== */
-function renderRods(){
-  document.querySelectorAll(".rod").forEach(e=>e.remove());
-  rods.forEach(r=>{
-    const d=document.createElement("div");
-    d.className="rod "+(r.status===0?"empty":"full");
-    d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
-    lot.appendChild(d);
-    // UI座標にスナップ
-    if(r.id==="B3") d.style.left="540px", d.style.top="590px";
-  });
-}
-renderRods();
+const userMarker=document.getElementById("user-marker");
+const headingArrow=document.getElementById("heading-arrow");
 
 /* ==== 開発モード移動 ==== */
 const moveStep=10;
@@ -180,8 +157,6 @@ function drawPath(path){
     const angle=Math.atan2(dy,dx)*180/Math.PI;
     l.style.width=dist+"px";
     l.style.height="2px";
-    l.style.background="yellow";
-    l.style.position="absolute";
     l.style.left=path[i].x+"px";
     l.style.top=path[i].y+"px";
     l.style.transform=`rotate(${angle}deg)`;
@@ -190,14 +165,13 @@ function drawPath(path){
   }
 }
 
-/* ==== メインループ ==== */
+/* ==== メイン更新 ==== */
 function update(){
   // ユーザーマーカー
-  const marker=document.getElementById("user-marker");
-  marker.style.left=userX+"px";
-  marker.style.top=userY+"px";
+  userMarker.style.left=userX+"px";
+  userMarker.style.top=userY+"px";
 
-  // B3までの経路探索
+  // 経路探索
   const startNode=nodes.reduce((prev,curr)=>
     heuristic({x:userX,y:userY},curr) < heuristic({x:userX,y:userY},prev)?curr:prev
   );
@@ -205,7 +179,17 @@ function update(){
   const path=astar(startNode,endNode);
   drawPath(path);
 
-  // TODO: 方位矢印をユーザーに追従させる
+  // 矢印をユーザー位置に追従
+  headingArrow.style.left=userX+"px";
+  headingArrow.style.top=userY+"px";
+
+  // 経路方向に矢印回転
+  if(path.length>1){
+    const dx=path[1].x - path[0].x;
+    const dy=path[1].y - path[0].y;
+    const angle=Math.atan2(dy,dx)*180/Math.PI;
+    headingArrow.style.transform=`translate(-50%,-100%) rotate(${angle}deg)`;
+  }
 }
 update();
 </script>
