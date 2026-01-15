@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（完全版＋B3ルート）</title>
+<title>駐車場 空き状況ナビ（B3ルート修正版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -13,7 +13,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 
 #parking-lot-container {
   position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5;
-  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
+  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf;
 }
 
 #parking-lot {
@@ -27,10 +27,11 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   border-top:3px solid white; border-bottom:3px solid white;
 }
 .empty{background:#4caf50;} .full{background:#f44336;}
+
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001; top:50%; left:50%; transform:translate(-50%,-50%);}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
 
-#route-path { position:absolute; z-index:900; pointer-events:none; }
+#route-path { position:absolute; z-index:900; pointer-events:none; top:0; left:0; }
 
 #heading-arrow {
   position:absolute; width:2px; height:14px; background:red; z-index:1002;
@@ -43,8 +44,8 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（B3ルート表示）</h1>
-<div id="location">現在地を設定してください</div>
+<h1>駐車場 空き状況ナビ（B3ルート修正版）</h1>
+<div id="location">現在地（開発）</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
 
@@ -85,20 +86,23 @@ let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
-const canvas = document.getElementById("route-path");
-const ctx = canvas.getContext("2d");
+const canvas=document.getElementById("route-path");
+const ctx=canvas.getContext("2d");
 
 /* ==== Socket.IO接続 ==== */
-const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
-const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
+const SOCKET_URL="https://parking-monitor-fr8a.onrender.com";
+const socket=io(SOCKET_URL,{transports:["websocket","polling"]});
 
 /* ==== 他人の位置 ==== */
-const others = {}; 
+const others={};
 
-/* ==== GPS→相対座標（自分中心） ==== */
+/* ==== GPS→相対座標（lot内） ==== */
 function gpsToRelative(lat,lng){
-  const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * lot.clientWidth;
-  const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * lot.clientHeight;
+  const x = ((lng - MIN_LNG)/(MAX_LNG - MIN_LNG))*lot.clientWidth;
+  const y = ((MAX_LAT - lat)/(MAX_LAT - MIN_LAT))*lot.clientHeight;
+  // 自分が中央に来るよう調整
+  const dx = x - ((userLng - MIN_LNG)/(MAX_LNG - MIN_LNG))*lot.clientWidth;
+  const dy = y - ((MAX_LAT - userLat)/(MAX_LAT - MIN_LAT))*lot.clientHeight;
   return {x: dx, y: dy};
 }
 
@@ -114,15 +118,15 @@ function renderRods(){
 }
 renderRods();
 
-/* ==== ルート描画 ==== */
+/* ==== ルート描画（B3） ==== */
 function drawRoute(){
   canvas.width = lot.clientWidth;
   canvas.height = lot.clientHeight;
-  const b3 = rods.find(r=>r.id==="B3");
+  const b3=rods.find(r=>r.id==="B3");
   if(!b3) return;
 
-  // シンプルに縦横移動でロッドに沿う折れ線
-  const path = [
+  // 自分の位置→同じ行のX→B3のYに折れ線
+  const path=[
     {lat:userLat,lng:userLng},
     {lat:userLat,lng:b3.lng},
     {lat:b3.lat,lng:b3.lng}
@@ -131,9 +135,9 @@ function drawRoute(){
   ctx.clearRect(0,0,canvas.width,canvas.height);
   ctx.beginPath();
   path.forEach((p,i)=>{
-    const pos = gpsToRelative(p.lat,p.lng);
-    const x = lot.clientWidth/2 + pos.x;
-    const y = lot.clientHeight/2 + pos.y;
+    const rel=gpsToRelative(p.lat,p.lng);
+    const x=lot.clientWidth/2 + rel.x;
+    const y=lot.clientHeight/2 + rel.y;
     if(i===0) ctx.moveTo(x,y);
     else ctx.lineTo(x,y);
   });
@@ -179,15 +183,15 @@ document.getElementById("enable-orientation").onclick=async()=>{
 /* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
-    if(id === socket.id) continue; 
+    if(id===socket.id) continue;
     if(!others[id]){
-      const m = document.createElement("div");
-      m.className = "user-marker-other";
+      const m=document.createElement("div");
+      m.className="user-marker-other";
       lot.appendChild(m);
-      others[id] = { marker: m, lat:data[id].lat, lng:data[id].lng };
+      others[id]={marker:m,lat:data[id].lat,lng:data[id].lng};
     } else {
-      others[id].lat = data[id].lat;
-      others[id].lng = data[id].lng;
+      others[id].lat=data[id].lat;
+      others[id].lng=data[id].lng;
     }
   }
   for(const id in others){
@@ -211,26 +215,22 @@ function sendMyPosition(){
 
     // ロッドを自分基準で相対配置
     document.querySelectorAll(".rod").forEach((d,i)=>{
-      const r = rods[i];
-      const rel = gpsToRelative(r.lat,r.lng);
+      const r=rods[i];
+      const rel=gpsToRelative(r.lat,r.lng);
       d.style.left = (lot.clientWidth/2 + rel.x) + "px";
       d.style.top  = (lot.clientHeight/2 + rel.y) + "px";
     });
 
     // 他人マーカー
     for(const id in others){
-      const o = others[id];
-      const rel = gpsToRelative(o.lat,o.lng);
-      o.marker.style.left = (lot.clientWidth/2 + rel.x -6) + "px";
-      o.marker.style.top  = (lot.clientHeight/2 + rel.y -6) + "px";
+      const o=others[id];
+      const rel=gpsToRelative(o.lat,o.lng);
+      o.marker.style.left = (lot.clientWidth/2 + rel.x - 6) + "px";
+      o.marker.style.top  = (lot.clientHeight/2 + rel.y - 6) + "px";
     }
 
     // UI回転
-    if(deviceHeading!=null){
-      lot.style.transform = `rotate(${-deviceHeading}deg)`;
-    } else {
-      lot.style.transform = `rotate(0deg)`;
-    }
+    lot.style.transform = deviceHeading!=null ? `rotate(${-deviceHeading}deg)` : `rotate(0deg)`;
 
     sendMyPosition();
     drawRoute();
