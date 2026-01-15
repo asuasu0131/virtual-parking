@@ -2,37 +2,47 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（修正版）</title>
+<title>駐車場 空き状況ナビ（完全版 修正版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
-body { font-family:sans-serif; background:#cfcfcf; padding:0; margin:0; text-align:center; }
+body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
 h1 { font-size:clamp(18px,4vw,26px); margin:6px 0; }
-#location,#orientation { background:#fff; padding:6px 8px; margin-bottom:6px; border-radius:6px; font-size:13px; position:absolute; top:50px; left:10px; z-index:2000;}
-#orientation { top:80px; }
-button { padding:6px 10px; font-size:14px; margin:2px; position:absolute; z-index:2000;}
-#enable-orientation{top:110px; left:10px;}
-
-#controller { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); z-index:2000;}
-#controller button{ margin:2px; }
+#location,#orientation { background:#fff; padding:6px 8px; margin-bottom:6px; border-radius:6px; font-size:13px; }
+button { padding:6px 10px; font-size:14px; margin:2px; }
+#controller { margin-bottom:8px; }
 
 #parking-lot-container {
-  position:absolute; top:50%; left:50%;
-  width:95vw; height:85vh;
-  transform:translate(-50%,-50%);
-  overflow:hidden;
-  border-radius:10px; background:#bfbfbf; cursor:crosshair;
+  position:relative; width:100%; max-width:900px; aspect-ratio:9/6.5;
+  margin:auto; overflow:hidden; border-radius:10px; background:#bfbfbf; cursor:crosshair;
 }
-#parking-lot { position:absolute; width:100%; height:100%; top:0; left:0; }
-.rod { position:absolute; width:33.33%; height:22%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px); border-top:3px solid white; border-bottom:3px solid white; }
+
+#parking-lot {
+  position:absolute; width:100%; height:100%;
+  top:0; left:0;
+}
+
+.rod { position:absolute; width:33.33%; height:22%;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  color:white; font-weight:bold; font-size:clamp(14px,3.5vw,24px);
+  border-top:3px solid white; border-bottom:3px solid white;
+}
 .empty{background:#4caf50;} .full{background:#f44336;}
 #user-marker{position:absolute; width:14px; height:14px; background:#2196f3; border-radius:50%; border:2px solid white; z-index:1001;}
 .user-marker-other{position:absolute;width:12px;height:12px;background:#ff9800;border:2px solid white;border-radius:50%;z-index:1000;}
-#heading-arrow { position:absolute; width:2px; height:14px; background:red; z-index:1002; transform-origin:bottom center; }
-#heading-arrow::after { content:""; position:absolute; bottom:100%; left:-4px; border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red; }
+
+/* 自分の向き矢印 */
+#heading-arrow {
+  position:absolute; width:2px; height:14px; background:red; z-index:1002;
+  top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,-100%) rotate(0deg);
+}
+#heading-arrow::after {
+  content:""; position:absolute; bottom:100%; left:-4px;
+  border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red;
+}
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（修正版）</h1>
+<h1>駐車場 空き状況ナビ（完全版 修正版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -67,22 +77,25 @@ const rods=[
 ];
 
 /* ==== 初期位置（開発モード）==== */
-let userLat=(MIN_LAT+MAX_LAT)/2;
-let userLng=(MIN_LNG+MAX_LNG)/2;
+let userLat = (MIN_LAT+MAX_LAT)/2;
+let userLng = (MIN_LNG+MAX_LNG)/2;
+
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 
-/* ==== Socket.IO ==== */
-const SOCKET_URL="https://parking-monitor-fr8a.onrender.com";
-const socket=io(SOCKET_URL,{transports:["websocket","polling"]});
-const others={};
+/* ==== Socket.IO接続 ==== */
+const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
+const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 
-/* ==== GPS→UI座標 (駐車場全体を基準) ==== */
+/* ==== 他人の位置 ==== */
+const others = {}; 
+
+/* ==== GPS→UI座標（駐車場左上を基準） ==== */
 function gpsToXY(lat,lng){
-  const x=( (lng-MIN_LNG)/(MAX_LNG-MIN_LNG) )*lot.clientWidth;
-  const y=( (MAX_LAT-lat)/(MAX_LAT-MIN_LAT) )*lot.clientHeight;
+  const x = ((lng - MIN_LNG)/(MAX_LNG - MIN_LNG)) * lot.clientWidth;
+  const y = ((MAX_LAT - lat)/(MAX_LAT - MIN_LAT)) * lot.clientHeight;
   return {x,y};
 }
 
@@ -94,8 +107,8 @@ function renderRods(){
     d.className="rod "+(r.status===0?"empty":"full");
     d.innerHTML=`${r.id}<br>${r.status===0?"空き":"使用中"}`;
     const pos=gpsToXY(r.lat,r.lng);
-    d.style.left=pos.x+"px";
-    d.style.top=pos.y+"px";
+    d.style.left = pos.x + "px";
+    d.style.top  = pos.y + "px";
     lot.appendChild(d);
   });
 }
@@ -103,32 +116,31 @@ renderRods();
 
 /* ==== 開発モード：クリック ==== */
 container.addEventListener("click", e=>{
-  const rect=container.getBoundingClientRect();
-  const x=e.clientX-rect.left, y=e.clientY-rect.top;
-  userLat=MAX_LAT-(y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
-  userLng=MIN_LNG+(x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
+ const rect=container.getBoundingClientRect();
+ const x=e.clientX-rect.left, y=e.clientY-rect.top;
+ userLat = MAX_LAT - (y/lot.clientHeight)*(MAX_LAT-MIN_LAT);
+ userLng = MIN_LNG + (x/lot.clientWidth)*(MAX_LNG-MIN_LNG);
 });
 
 /* ==== 移動ボタン ==== */
 const moveStepLat=(MAX_LAT-MIN_LAT)/50;
 const moveStepLng=(MAX_LNG-MIN_LNG)/50;
-function moveUp(){ userLat+=moveStepLat; }
-function moveDown(){ userLat-=moveStepLat; }
-function moveLeft(){ userLng-=moveStepLng; }
-function moveRight(){ userLng+=moveStepLng; }
+function moveUp(){ if(userLat!==null) userLat+=moveStepLat; }
+function moveDown(){ if(userLat!==null) userLat-=moveStepLat; }
+function moveLeft(){ if(userLng!==null) userLng-=moveStepLng; }
+function moveRight(){ if(userLng!==null) userLng+=moveStepLng; }
 
 document.getElementById("up").onclick=moveUp;
 document.getElementById("down").onclick=moveDown;
 document.getElementById("left").onclick=moveLeft;
 document.getElementById("right").onclick=moveRight;
-
 window.addEventListener("keydown", e=>{
-  switch(e.key){
-    case "ArrowUp": moveUp(); break;
-    case "ArrowDown": moveDown(); break;
-    case "ArrowLeft": moveLeft(); break;
-    case "ArrowRight": moveRight(); break;
-  }
+ switch(e.key){
+  case "ArrowUp": moveUp(); break;
+  case "ArrowDown": moveDown(); break;
+  case "ArrowLeft": moveLeft(); break;
+  case "ArrowRight": moveRight(); break;
+ }
 });
 
 /* ==== 方位センサ ==== */
@@ -138,21 +150,25 @@ document.getElementById("enable-orientation").onclick=async()=>{
   if(res!=="granted") return alert("方位センサが許可されていません");
  }
  window.addEventListener("deviceorientation", e=>{
-  deviceHeading=e.webkitCompassHeading!=null?e.webkitCompassHeading:(360-e.alpha);
+  if(e.webkitCompassHeading!=null) deviceHeading=e.webkitCompassHeading;
+  else if(e.alpha!=null) deviceHeading=360-e.alpha;
   document.getElementById("orientation").textContent=`向き：${deviceHeading?.toFixed(0)}°`;
  });
 };
 
-/* ==== Socket.IO 他ユーザー位置 ==== */
+/* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
-    if(id===socket.id) continue;
+    if(id === socket.id) continue; 
     if(!others[id]){
-      const m=document.createElement("div");
-      m.className="user-marker-other";
+      const m = document.createElement("div");
+      m.className = "user-marker-other";
       lot.appendChild(m);
-      others[id]={marker:m, lat:data[id].lat, lng:data[id].lng};
-    } else { others[id].lat=data[id].lat; others[id].lng=data[id].lng; }
+      others[id] = { marker: m, lat:data[id].lat, lng:data[id].lng };
+    } else {
+      others[id].lat = data[id].lat;
+      others[id].lng = data[id].lng;
+    }
   }
   for(const id in others){
     if(!data[id]){
@@ -163,37 +179,39 @@ socket.on("positions", data=>{
 });
 
 /* ==== 自分の位置送信 ==== */
-function sendMyPosition(){ if(userLat!=null) socket.emit("update_position",{lat:userLat,lng:userLng}); }
+function sendMyPosition(){
+ if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng});
+}
 
 /* ==== メインループ ==== */
 (function loop(){
-  if(userLat!=null && userLng!=null){
-    document.getElementById("location").textContent=
-      `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
+ if(userLat!==null && userLng!==null){
+  document.getElementById("location").textContent=
+   `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-    // 自分マーカー
-    const selfXY=gpsToXY(userLat,userLng);
-    const um=document.getElementById("user-marker");
-    um.style.left=selfXY.x+"px";
-    um.style.top=selfXY.y+"px";
+  // 自分マーカー
+  const selfPos=gpsToXY(userLat,userLng);
+  const um=document.getElementById("user-marker");
+  um.style.left=selfPos.x+"px";
+  um.style.top=selfPos.y+"px";
 
-    // 他ユーザー
-    for(const id in others){
-      const o=others[id];
-      const xy=gpsToXY(o.lat,o.lng);
-      o.marker.style.left=xy.x+"px";
-      o.marker.style.top=xy.y+"px";
-    }
-
-    // ロッド更新
-    renderRods();
-
-    // 回転
-    lot.style.transform=deviceHeading!=null?`rotate(${-deviceHeading}deg)`:"rotate(0deg)";
-
-    sendMyPosition();
+  // 他ユーザー
+  for(const id in others){
+    const o=others[id];
+    const pos=gpsToXY(o.lat,o.lng);
+    o.marker.style.left = (pos.x-6)+"px";
+    o.marker.style.top  = (pos.y-6)+"px";
   }
-  requestAnimationFrame(loop);
+
+  // ロッド更新
+  renderRods();
+
+  // 回転
+  lot.style.transform = deviceHeading!=null?`rotate(${-deviceHeading}deg)`:"rotate(0deg)";
+
+  sendMyPosition();
+ }
+ requestAnimationFrame(loop);
 })();
 </script>
 </body>
