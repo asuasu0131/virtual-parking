@@ -63,7 +63,8 @@ const lot=document.getElementById("parking-lot");
 const arrow=document.getElementById("arrow");
 
 /* ==== Socket.IO接続 ==== */
-const socket = io();
+const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com"; // Render の URL に変更
+const socket = io(SOCKET_URL, { transports: ["websocket", "polling"] });
 
 /* ==== 他人の位置 ==== */
 const others = {}; // { socketId: {lat,lng,marker} }
@@ -173,7 +174,6 @@ document.getElementById("enable-orientation").onclick=async()=>{
 
 /* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
-  // 他人のマーカー表示
   for(const id in data){
     if(id === socket.id) continue; // 自分は表示しない
     if(!others[id]){
@@ -186,7 +186,6 @@ socket.on("positions", data=>{
     others[id].marker.style.left = (p.x-6)+"px";
     others[id].marker.style.top = (p.y-6)+"px";
   }
-  // 存在しないIDは削除
   for(const id in others){
     if(!data[id]){
       lot.removeChild(others[id].marker);
