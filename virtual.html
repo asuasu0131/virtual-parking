@@ -76,7 +76,10 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
-let userLat=null, userLng=null;
+/* ==== 初期位置（開発モード）==== */
+let userLat = (MIN_LAT+MAX_LAT)/2;   // 駐車場中央付近
+let userLng = (MIN_LNG+MAX_LNG)/2;
+
 let deviceHeading=null;
 
 const lot=document.getElementById("parking-lot");
