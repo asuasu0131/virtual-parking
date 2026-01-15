@@ -58,7 +58,7 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 <button id="enable-orientation">方位センサを有効化</button>
 
 <div id="zoom-slider-container">
-  <input type="range" id="zoom-slider" min="0.8" max="2.0" value="1.2" step="0.01">
+  <input type="range" id="zoom-slider" min="0.8" max="2.5" value="1.8" step="0.01">
 </div>
 
 <div id="controller">
@@ -76,11 +76,9 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
 <script>
-/* ==== 駐車場範囲 ==== */
 const MIN_LAT=38.16742, MAX_LAT=38.16752;
 const MIN_LNG=140.86561, MAX_LNG=140.86591;
 
-/* ==== ロッド ==== */
 const rods=[
  {id:"A1",lat:38.16748,lng:140.86561,status:0,row:1,col:1},
  {id:"A2",lat:38.16746,lng:140.86561,status:1,row:2,col:1},
@@ -90,30 +88,25 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
-/* ==== 初期位置（開発モード）==== */
 let userLat = (MIN_LAT+MAX_LAT)/2;
 let userLng = (MIN_LNG+MAX_LNG)/2;
 let deviceHeading=null;
-let zoomScale = 1.2; // 初期サイズを大きめに
+let zoomScale = 1.8; // 初期サイズ大きめ
 
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 
-/* ==== Socket.IO接続 ==== */
 const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
 const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
 
-/* ==== 他人の位置 ==== */
 const others = {}; 
 
-/* ==== GPS→UI相対座標 ==== */
 function gpsToRelative(lat,lng){
   const dx = (lng - userLng) / (MAX_LNG-MIN_LNG) * 100;
   const dy = (userLat - lat) / (MAX_LAT-MIN_LAT) * 100;
   return {x: dx, y: dy};
 }
 
-/* ==== ロッド描画 ==== */
 function renderRods(){
   document.querySelectorAll(".rod").forEach(e=>e.remove());
   rods.forEach(r=>{
@@ -125,7 +118,6 @@ function renderRods(){
 }
 renderRods();
 
-/* ==== 開発モード：クリック・コントローラー ==== */
 container.addEventListener("click", e=>{
  const rect=container.getBoundingClientRect();
  const x=e.clientX-rect.left, y=e.clientY-rect.top;
@@ -154,7 +146,6 @@ window.addEventListener("keydown", e=>{
  }
 });
 
-/* ==== 方位センサ ==== */
 document.getElementById("enable-orientation").onclick=async()=>{
  if(typeof DeviceOrientationEvent?.requestPermission==="function"){
   const res=await DeviceOrientationEvent.requestPermission();
@@ -167,12 +158,10 @@ document.getElementById("enable-orientation").onclick=async()=>{
  });
 };
 
-/* ==== Zoomスライダー ==== */
 document.getElementById("zoom-slider").addEventListener("input", e=>{
   zoomScale = parseFloat(e.target.value);
 });
 
-/* ==== Socket.IO：他人の位置更新 ==== */
 socket.on("positions", data=>{
   for(const id in data){
     if(id === socket.id) continue; 
@@ -194,30 +183,26 @@ socket.on("positions", data=>{
   }
 });
 
-/* ==== 自分の位置送信 ==== */
 function sendMyPosition(){
  if(userLat!==null) socket.emit("update_position",{lat:userLat,lng:userLng});
 }
 
-/* ==== メインループ ==== */
 (function loop(){
  if(userLat!==null && userLng!==null){
   document.getElementById("location").textContent=
    `現在地（開発）：${userLat.toFixed(5)}, ${userLng.toFixed(5)}`;
 
-  // ロッドを自分基準で相対配置＋ズーム
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
     const rel = gpsToRelative(r.lat,r.lng);
-    const baseWidth = 50; // 初期幅を大きめ
-    const baseHeight = 33; // 初期高さを大きめ
+    const baseWidth = 80;  // 幅大きめ
+    const baseHeight = 50; // 高さ大きめ
     d.style.width = `${baseWidth*zoomScale}px`;
     d.style.height = `${baseHeight*zoomScale}px`;
     d.style.left = (lot.clientWidth/2 + rel.x*zoomScale - (baseWidth*zoomScale)/2) + "px";
     d.style.top  = (lot.clientHeight/2 + rel.y*zoomScale - (baseHeight*zoomScale)/2) + "px";
   });
 
-  // 他人マーカー
   for(const id in others){
     const o = others[id];
     const rel = gpsToRelative(o.lat,o.lng);
@@ -225,7 +210,6 @@ function sendMyPosition(){
     o.marker.style.top  = (lot.clientHeight/2 + rel.y*zoomScale -6) + "px";
   }
 
-  // UI回転
   if(deviceHeading!=null){
     lot.style.transform = `rotate(${-deviceHeading}deg) scale(${zoomScale})`;
   } else {
