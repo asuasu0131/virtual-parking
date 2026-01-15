@@ -105,17 +105,17 @@ function gpsToRelative(lat,lng){
 
 function renderRods(){
 // ロッドを自分基準で相対配置
-document.querySelectorAll(".rod").forEach((d,i)=>{
-  const r = rods[i];
-  const rel = gpsToRelative(r.lat,r.lng);
+  document.querySelectorAll(".rod").forEach((d,i)=>{
+    const r = rods[i];
+    const rel = gpsToRelative(r.lat,r.lng);
 
-  // divの幅・高さの半分をオフセット
-  const offsetX = d.offsetWidth / 2;
-  const offsetY = d.offsetHeight / 2;
+    // divの幅・高さの半分をオフセット
+    const offsetX = d.offsetWidth / 2;
+    const offsetY = d.offsetHeight / 2;
 
-  d.style.left = (lot.clientWidth/2 + rel.x - offsetX) + "px";
-  d.style.top  = (lot.clientHeight/2 + rel.y - offsetY) + "px";
-});
+    d.style.left = (lot.clientWidth/2 + rel.x - offsetX) + "px";
+    d.style.top  = (lot.clientHeight/2 + rel.y - offsetY) + "px";
+  });
 }
 renderRods();
 
