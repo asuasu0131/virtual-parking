@@ -105,6 +105,9 @@ function render(){
   });
 }
 
+/* ==== 初期表示：ロッドを描画 ==== */
+render();  // ページロード時にロッドを表示
+
 /* ==== 開発モード：クリック・コントローラー ==== */
 lot.addEventListener("click", e=>{
  const rect=lot.getBoundingClientRect();
@@ -202,9 +205,9 @@ function sendMyPosition(){
     arrowEl.style.transform=`rotate(${deviceHeading}deg)`;
   }
 
-  render();
   sendMyPosition();
  }
+
  requestAnimationFrame(loop);
 })();
 </script>
