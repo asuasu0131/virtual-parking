@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>駐車場 空き状況ナビ（ズーム対応・中心座標・案内矢印版）</title>
+<title>駐車場 空き状況ナビ（ズーム対応・中心座標版）</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>
 body { font-family:sans-serif; background:#cfcfcf; padding:8px; margin:0; text-align:center; }
@@ -41,19 +41,10 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   content:""; position:absolute; bottom:100%; left:-4px;
   border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid red;
 }
-/* 自分から空きロッドへの矢印 */
-#route-arrow {
-  position:absolute; width:2px; height:40px; background:yellow; z-index:1003;
-  top:50%; left:50%; transform-origin:bottom center; transform:translate(-50%,0) rotate(0deg);
-}
-#route-arrow::after {
-  content:""; position:absolute; bottom:100%; left:-4px;
-  border-left:5px solid transparent; border-right:5px solid transparent; border-bottom:10px solid yellow;
-}
 </style>
 </head>
 <body>
-<h1>駐車場 空き状況ナビ（ズーム対応・中心座標・案内矢印版）</h1>
+<h1>駐車場 空き状況ナビ（ズーム対応・中心座標版）</h1>
 <div id="location">現在地を設定してください</div>
 <div id="orientation">向き：未取得</div>
 <button id="enable-orientation">方位センサを有効化</button>
@@ -65,13 +56,13 @@ button { padding:6px 10px; font-size:14px; margin:2px; }
   <button id="right">→</button>
 </div>
 
+<!-- ズームスライダー -->
 <input type="range" id="zoom-slider" min="0.5" max="2" step="0.01" value="1">
 
 <div id="parking-lot-container">
   <div id="parking-lot"></div>
   <div id="user-marker"></div>
   <div id="heading-arrow"></div>
-  <div id="route-arrow"></div>
 </div>
 
 <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
@@ -90,6 +81,7 @@ const rods=[
  {id:"B3",lat:38.16744,lng:140.86591,status:0,row:3,col:3}
 ];
 
+/* ==== 初期位置（開発モード）==== */
 let userLat = (MIN_LAT+MAX_LAT)/2;
 let userLng = (MIN_LNG+MAX_LNG)/2;
 let deviceHeading=null;
@@ -98,6 +90,11 @@ let zoomScale = 1;
 const lot=document.getElementById("parking-lot");
 const container=document.getElementById("parking-lot-container");
 const zoomSlider = document.getElementById("zoom-slider");
+
+/* ==== Socket.IO接続 ==== */
+const SOCKET_URL = "https://parking-monitor-fr8a.onrender.com";
+const socket = io(SOCKET_URL, { transports: ["websocket","polling"] });
+
 const others = {}; 
 
 function gpsToRelative(lat,lng){
@@ -183,19 +180,6 @@ function sendMyPosition(){ if(userLat!==null) socket.emit("update_position",{lat
 /* ==== ズームスライダー ==== */
 zoomSlider.addEventListener("input", ()=>{ zoomScale = parseFloat(zoomSlider.value); });
 
-/* ==== 空きロッドへの案内 ==== */
-function drawRouteArrow(){
-  const target = rods.find(r => r.status===0); // 空きロッド1つを選択
-  if(!target) { document.getElementById("route-arrow").style.display="none"; return; }
-  const rel = gpsToRelative(target.lat, target.lng);
-  const angle = Math.atan2(rel.y, rel.x) * 180 / Math.PI;
-  const arrow = document.getElementById("route-arrow");
-  arrow.style.display="block";
-  arrow.style.left = lot.clientWidth/2 + "px";
-  arrow.style.top  = lot.clientHeight/2 + "px";
-  arrow.style.transform = `translate(-50%,0) rotate(${angle}deg)`;
-}
-
 /* ==== メインループ ==== */
 (function loop(){
  if(userLat!==null && userLng!==null){
@@ -205,7 +189,10 @@ function drawRouteArrow(){
   document.querySelectorAll(".rod").forEach((d,i)=>{
     const r = rods[i];
     const rel = gpsToRelative(r.lat,r.lng);
-    const w = d.offsetWidth, h = d.offsetHeight;
+
+    // ロッドの幅・高さそのままに中心座標に対応
+    const w = d.offsetWidth;
+    const h = d.offsetHeight;
     d.style.left = (lot.clientWidth/2 + rel.x - w/2) + "px";
     d.style.top  = (lot.clientHeight/2 + rel.y - h/2) + "px";
   });
@@ -219,7 +206,6 @@ function drawRouteArrow(){
 
   lot.style.transform = `scale(${zoomScale}) rotate(${deviceHeading!=null?-deviceHeading:0}deg)`;
 
-  drawRouteArrow();
   sendMyPosition();
  }
  requestAnimationFrame(loop);
